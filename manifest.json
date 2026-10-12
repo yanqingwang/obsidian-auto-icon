@@ -1,0 +1,10 @@
+{
+  "id": "auto-icon",
+  "name": "Auto Icon",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Automatically assign an icon to each note based on its content, across 32 built-in categories. Uses local rules by default, with an optional AI classifier. Writes to the frontmatter icon field, and the icon sources are yours to extend.",
+  "author": "rosswang",
+  "authorUrl": "https://github.com/yanqingwang",
+  "isDesktopOnly": false
+}

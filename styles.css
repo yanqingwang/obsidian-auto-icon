@@ -1,0 +1,107 @@
+/* Auto Icon — preview dialog and settings page. */
+
+.ai-summary {
+  margin: 0 0 0.35em;
+  font-weight: var(--font-semibold);
+}
+
+.ai-muted {
+  margin: 0 0 0.35em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.ai-files {
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+  margin: 0.8em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 0.3em 0.5em;
+}
+
+.ai-row {
+  padding: 0.3em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-row:last-child {
+  border-bottom: none;
+}
+
+.ai-path {
+  display: block;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.ai-values {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  margin-top: 0.15em;
+}
+
+.ai-values code {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  padding: 0.05em 0.35em;
+  border-radius: var(--radius-s);
+}
+
+.ai-before {
+  background: var(--background-modifier-error-hover);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-error);
+  color: var(--text-muted);
+}
+
+.ai-after {
+  background: var(--background-modifier-success-hover);
+}
+
+.ai-arrow {
+  color: var(--text-faint);
+}
+
+/* Why the plugin chose what it chose — the question every auto-tagger gets asked. */
+.ai-reasons {
+  margin-top: 0.15em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+}
+
+.ai-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+  margin-top: 0.4em;
+}
+
+.ai-buttons button {
+  cursor: pointer;
+}
+
+/* Small live icon preview next to each category row in settings. */
+.ai-icon-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6em;
+  margin-left: 0.4em;
+  color: var(--text-muted);
+}
+
+.ai-icon-preview svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* Weight sliders read better without the long default description taking a full row each. */
+.ai-weight-row {
+  border-top: none;
+  padding-top: 0.2em;
+  padding-bottom: 0.2em;
+}
