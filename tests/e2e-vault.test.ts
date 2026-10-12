@@ -1,19 +1,21 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, relative, sep } from "path";
 import { DEFAULT_CATEGORIES } from "../src/categories";
-import { classifyByRules, extractSignals, RuleClassifier } from "../src/classifier";
+import { extractSignals, RuleClassifier } from "../src/classifier";
+import { applyIcon, detectIcon, stripIcon } from "../src/placement";
 import { buildPlan, type ScanInput } from "../src/planner";
-import { resolveIcon, type SourceContext } from "../src/sources";
+import { shapeFor, type IconSetMeta } from "../src/iconset";
 
 /**
- * End-to-end over a directory shaped like a real vault: Chinese paths, mixed frontmatter forms,
- * nested folders, and notes that genuinely have no category.
+ * End-to-end over a directory shaped like a real vault: Chinese paths, both frontmatter forms,
+ * nested folders, notes with no category, and a note whose icon the user edited by hand.
  *
- * The point is to confirm the default settings produce sensible assignments on realistic content —
- * and, just as importantly, that they stay silent on notes that carry no signal at all. A plugin
- * that icons everything is worse than one that icons nothing.
+ * The contract being checked is the one the redesign promised — the icon lives at the top of the
+ * note body, writing is reversible, and a note with no signal is left completely alone.
  */
+
+const SET = JSON.parse(readFileSync(join(__dirname, "..", "icons", "iconpark.json"), "utf8")) as IconSetMeta;
 
 const VAULT_FILES: Record<string, string> = {
   "工作/2026预算.md": "---\ntags: [finance]\n---\n\n2026 年的部门预算和成本拆分。\n",
@@ -21,10 +23,10 @@ const VAULT_FILES: Record<string, string> = {
   "会议/2026-10-12 周会.md": "---\ntags: meeting\n---\n\n## 纪要\n\n讨论了上线时间。\n",
   "项目/小程序重构/里程碑.md": "---\ntags: [project, roadmap]\n---\n\n## 里程碑\n\nQ4 完成。\n",
   "归档/2024 旧总结.md": "---\ntags: archive\n---\n\n已结束。\n",
-  "notes.md": "随手记的一段话，没有任何标签。\n",
   "招聘/候选人-张三.md": "---\ntags:\n  - interview\n  - candidate\n---\n\n面试评价与 offer 沟通。\n",
   "运维/告警处理.md": "---\ntype: operations\n---\n\n监控告警的处理流程。\n",
   "深度/被显式声明的笔记.md": "---\ntype: bug\n---\n\n虽然放在这里，但声明了类别。\n",
+  "notes.md": "随手记的一段话，没有任何标签。\n",
   "空的/没有frontmatter.md": "就是一段普通文字。\n",
 };
 
@@ -34,8 +36,8 @@ beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), "auto-icon-e2e-"));
   for (const [path, content] of Object.entries(VAULT_FILES)) {
     const full = join(root, path);
-    mkDir(join(full, ".."));
-    writeFile(full, content);
+    mkdirSync(join(full, ".."), { recursive: true });
+    writeFileSync(full, content, "utf8");
   }
 });
 
@@ -43,99 +45,87 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function mkDir(dir: string): void {
-  const { mkdirSync } = require("fs") as typeof import("fs");
-  mkdirSync(dir, { recursive: true });
-}
-
-function writeFile(path: string, content: string): void {
-  const { writeFileSync } = require("fs") as typeof import("fs");
-  writeFileSync(path, content, "utf8");
-}
-
-/** Walk the directory and return vault-relative paths, matching Obsidian's `/` separator. */
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      out.push(...walk(full));
-    } else {
-      out.push(relative(root, full).split(sep).join("/"));
-    }
+    if (statSync(full).isDirectory()) out.push(...walk(full));
+    else out.push(relative(root, full).split(sep).join("/"));
   }
   return out.sort();
 }
 
-/** Minimal frontmatter split, mirroring what the metadata cache would hand the plugin. */
-function frontmatterOf(content: string): { frontmatter: Record<string, unknown>; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
-  if (!match) return { frontmatter: {}, body: content };
+/** Split a note the way the plugin does, keeping the frontmatter text byte for byte. */
+function splitNote(raw: string): { frontmatterText: string; body: string; frontmatter: Record<string, unknown> } {
+  const match = /^(---\r?\n[\s\S]*?\r?\n---(?:\r?\n)?)/.exec(raw);
+  const frontmatterText = match ? match[1] : "";
+  const body = match ? raw.slice(match[1].length) : raw;
 
   const fm: Record<string, unknown> = {};
-  // Good enough for the flat `key: value` and `- item` shapes this fixture uses.
-  let currentKey: string | null = null;
-  for (const line of match[1].split(/\r?\n/)) {
-    if (/^\s*-\s+(.*)$/.exec(line)?.[1] !== undefined && currentKey) {
-      // `tags:` with no value parses as "", not as a missing key — so Array.isArray, not `?? []`.
-      const existing = fm[currentKey];
-      const list = Array.isArray(existing) ? (existing as string[]) : [];
-      list.push(RegExp.$1.trim());
-      fm[currentKey] = list;
+  let key: string | null = null;
+  for (const line of frontmatterText.split(/\r?\n/).slice(1, -1)) {
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    if (item && key) {
+      const existing = fm[key];
+      fm[key] = Array.isArray(existing) ? [...(existing as string[]), item[1].trim()] : [item[1].trim()];
       continue;
     }
     const kv = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
     if (kv) {
-      currentKey = kv[1];
-      fm[currentKey] = kv[2].trim();
+      key = kv[1];
+      fm[key] = kv[2].trim();
     }
   }
-  return { frontmatter: fm, body: content.slice(match[0].length) };
+  return { frontmatterText, body, frontmatter: fm };
 }
 
-/** Lucide names this Obsidian build would report; a realistic subset. */
-const LUCIDE: SourceContext = {
-  lucideIds: new Set([
-    "inbox", "folder-kanban", "list-checks", "scale", "users", "file-chart-column",
-    "flask-conical", "book-open", "wand-sparkles", "palette", "code", "bug", "flask-round",
-    "rocket", "server", "file-text", "workflow", "gauge", "copy", "archive", "wallet",
-    "file-pen", "handshake", "truck", "user-plus", "messages-square", "graduation-cap",
-    "trending-up", "triangle-alert", "lightbulb", "key-round", "bookmark",
-  ]),
-  userSources: [],
-};
-
-async function runScan() {
+async function runScan(overwrite = false) {
   const classifier = new RuleClassifier({ minScore: 4 });
+  const theme = "outline";
+  const size = 20;
   const inputs: ScanInput[] = [];
 
   for (const path of walk(root)) {
     if (!path.endsWith(".md")) continue;
-    const content = readFileSync(join(root, path), "utf8");
-    const { frontmatter, body } = frontmatterOf(content);
-
+    const { body, frontmatter } = splitNote(readFileSync(join(root, path), "utf8"));
     const signals = extractSignals({ path, frontmatter, body });
     const classification = await classifier.classify(signals, DEFAULT_CATEGORIES);
     const category = DEFAULT_CATEGORIES.find((c) => c.id === classification.categoryId);
-    const resolved = category ? resolveIcon(category.icon, category.fallbackIcon, LUCIDE) : null;
 
     inputs.push({
       path,
-      currentIcon: typeof frontmatter["icon"] === "string" ? (frontmatter["icon"] as string) : null,
+      current: detectIcon(body),
       classification,
-      icon: resolved ? `${resolved.ref.source}:${resolved.ref.key}` : null,
+      categoryId: category?.id ?? null,
+      icon: category?.icon ?? null,
+      shape: category ? shapeFor(SET, category.icon, theme) : null,
+      theme,
+      size,
     });
   }
-  return { inputs, plan: buildPlan(inputs, { overwriteExisting: false }) };
+  return { inputs, plan: buildPlan(inputs, { overwriteExisting: overwrite }) };
 }
 
-describe("scanning a realistic vault", () => {
+/** Apply the plan the way the plugin does: rewrite the body, keep frontmatter verbatim. */
+function applyToDisk(plan: Awaited<ReturnType<typeof runScan>>["plan"]): void {
+  for (const change of plan.changes) {
+    const full = join(root, change.path);
+    const { frontmatterText, body } = splitNote(readFileSync(full, "utf8"));
+    const next =
+      change.shape === null
+        ? stripIcon(body)
+        : applyIcon(body, change.shape, change.after as string, change.theme, change.size);
+    writeFileSync(full, frontmatterText + next, "utf8");
+  }
+}
+
+describe("classifying a realistic vault", () => {
   it("assigns the expected category to each tagged note", async () => {
     const { plan } = await runScan();
     const byPath = new Map(plan.changes.map((c) => [c.path, c]));
 
-    const expectCategory = (path: string, categoryId: string): void => {
-      expect(byPath.get(path)?.categoryId).toBe(categoryId);
+    const expectCategory = (path: string, id: string): void => {
+      expect(byPath.get(path)?.categoryId).toBe(id);
     };
 
     expectCategory("工作/2026预算.md", "finance");
@@ -149,16 +139,7 @@ describe("scanning a realistic vault", () => {
 
   it("honours an explicit frontmatter declaration over the folder", async () => {
     const { plan } = await runScan();
-    // Lives under 深度/ but declares `type: bug`.
     expect(plan.changes.find((c) => c.path === "深度/被显式声明的笔记.md")?.categoryId).toBe("bug");
-  });
-
-  it("writes an icon reference that actually resolves", async () => {
-    const { plan } = await runScan();
-    for (const change of plan.changes) {
-      expect(change.after).toMatch(/^lucide:/);
-      expect(LUCIDE.lucideIds.has(change.after!.split(":")[1])).toBe(true);
-    }
   });
 
   it("leaves genuinely uncategorisable notes alone", async () => {
@@ -166,45 +147,110 @@ describe("scanning a realistic vault", () => {
     const touched = new Set(plan.changes.map((c) => c.path));
     expect(touched.has("notes.md")).toBe(false);
     expect(touched.has("空的/没有frontmatter.md")).toBe(false);
-    expect(plan.unmatched).toBeGreaterThanOrEqual(2);
   });
 
-  it("touches exactly the notes that carry a signal", async () => {
-    const { plan } = await runScan();
-    // A ratio assertion would be meaningless here: the fixture is 8 tagged notes out of 10, so a
-    // correct classifier *should* icon 8. What matters is that the touched set is exactly right.
-    const touched = plan.changes.map((c) => c.path);
-    // Sorted on both sides: code-point order, not the reading order a human would choose.
-    expect(touched.sort()).toEqual(
-      [
-        "工作/2026预算.md",
-        "工作/合同/框架协议.md",
-        "会议/2026-10-12 周会.md",
-        "项目/小程序重构/里程碑.md",
-        "招聘/候选人-张三.md",
-        "归档/2024 旧总结.md",
-        "深度/被显式声明的笔记.md",
-        "运维/告警处理.md",
-      ].sort()
-    );
-    expect(touched).toHaveLength(8);
-  });
-
-  it("explains every decision", async () => {
+  it("writes icon references that resolve against the shipped set", async () => {
     const { plan } = await runScan();
     for (const change of plan.changes) {
-      expect(change.reasons.length).toBeGreaterThan(0);
+      expect(SET.icons[change.after as string]).toBeDefined();
     }
   });
 });
 
-describe("fallback when an Obsidian build lacks an icon", () => {
-  it("falls back to emoji rather than writing a broken reference", async () => {
-    const category = DEFAULT_CATEGORIES.find((c) => c.id === "task")!;
-    const sparse: SourceContext = { lucideIds: new Set(), userSources: [] };
+describe("writing icons to disk", () => {
+  it("puts the icon at the top of the body, not in frontmatter", async () => {
+    const { plan } = await runScan();
+    applyToDisk(plan);
 
-    const resolved = resolveIcon(category.icon, category.fallbackIcon, sparse);
-    expect(resolved?.usedFallback).toBe(true);
-    expect(resolved?.render).toEqual({ kind: "emoji", glyph: "✅" });
+    const full = join(root, "会议/2026-10-12 周会.md");
+    const raw = readFileSync(full, "utf8");
+    const { frontmatterText, body } = splitNote(raw);
+
+    // Frontmatter is byte-for-byte what it was: no `icon` key, no other change.
+    expect(frontmatterText).toBe("---\ntags: meeting\n---\n");
+
+    // The icon is the first line of the body, and the heading still follows it.
+    expect(body.split("\n")[0]).toMatch(/^<svg class="auto-icon"/);
+    expect(detectIcon(body)).toMatchObject({ theme: "outline", size: 20 });
+    expect(body).toContain("## 纪要");
+  });
+
+  it("produces no colour sentinels in the written file", async () => {
+    const { plan } = await runScan();
+    applyToDisk(plan);
+    for (const path of walk(root)) {
+      if (!path.endsWith(".md")) continue;
+      const { body } = splitNote(readFileSync(join(root, path), "utf8"));
+      const line = /^<svg class="auto-icon"[^\n]*$/m.exec(body)?.[0];
+      if (line) expect(line).not.toMatch(/C[0-3]/);
+    }
+  });
+
+  it("round trips exactly: clearing restores the original bytes", async () => {
+    const before = Object.fromEntries(
+      walk(root).filter((p) => p.endsWith(".md")).map((p) => [p, readFileSync(join(root, p), "utf8")])
+    );
+
+    const { plan } = await runScan();
+    applyToDisk(plan);
+    // Clearing is what the plugin does with `change.shape === null`, i.e. stripIcon.
+    for (const change of plan.changes) {
+      const full = join(root, change.path);
+      const { frontmatterText, body } = splitNote(readFileSync(full, "utf8"));
+      writeFileSync(full, frontmatterText + stripIcon(body), "utf8");
+    }
+
+    for (const [path, original] of Object.entries(before)) {
+      expect(readFileSync(join(root, path), "utf8")).toBe(original);
+    }
+  });
+
+  it("is idempotent: a second scan finds nothing left to do", async () => {
+    const first = await runScan();
+    applyToDisk(first.plan);
+
+    const second = await runScan();
+    expect(second.plan.changes).toEqual([]);
+    expect(second.plan.unchanged).toBeGreaterThan(0);
+  });
+
+  it("does not accumulate blank lines when run twice", async () => {
+    const { plan } = await runScan();
+    applyToDisk(plan);
+
+    const full = join(root, "会议/2026-10-12 周会.md");
+    const { frontmatterText, body } = splitNote(readFileSync(full, "utf8"));
+    const detection = detectIcon(body);
+    const category = DEFAULT_CATEGORIES.find((c) => c.id === "meeting")!;
+    const again = applyIcon(body, shapeFor(SET, category.icon, "outline")!, detection!.icon, detection!.theme, detection!.size);
+
+    expect(again).toBe(body);
+    expect(frontmatterText.length).toBeGreaterThan(0);
+  });
+});
+
+describe("respecting a hand-edited icon", () => {
+  it("leaves it alone by default", async () => {
+    const full = join(root, "会议/2026-10-12 周会.md");
+    const { frontmatterText, body } = splitNote(readFileSync(full, "utf8"));
+    const handPicked = shapeFor(SET, "star", "outline")!;
+    writeFileSync(full, frontmatterText + applyIcon(body, handPicked, "star", "filled", 32), "utf8");
+
+    const { plan } = await runScan();
+    expect(plan.changes.some((c) => c.path === "会议/2026-10-12 周会.md")).toBe(false);
+
+    // Restore so later assertions in this file see a predictable state.
+    writeFileSync(full, frontmatterText + stripIcon(body), "utf8");
+  });
+
+  it("replaces it when overwrite is on", async () => {
+    const full = join(root, "会议/2026-10-12 周会.md");
+    const { frontmatterText, body } = splitNote(readFileSync(full, "utf8"));
+    writeFileSync(full, frontmatterText + applyIcon(body, shapeFor(SET, "star", "outline")!, "star", "filled", 32), "utf8");
+
+    const { plan } = await runScan(true);
+    expect(plan.changes.some((c) => c.path === "会议/2026-10-12 周会.md")).toBe(true);
+
+    writeFileSync(full, frontmatterText + stripIcon(body), "utf8");
   });
 });

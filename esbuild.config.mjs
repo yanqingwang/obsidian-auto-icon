@@ -18,6 +18,8 @@ const outDir = process.env.OUTDIR ?? ".";
 const outfile = path.join(outDir, "main.js");
 
 // Copy the static files required for plugin distribution to the output directory.
+// `icons/iconpark.json` is required at runtime — it is the icon set, kept out of the bundle on
+// purpose so Obsidian does not parse 1.2 MB of SVG on every load.
 function copyAssets() {
   if (outDir === ".") return;
   fs.mkdirSync(outDir, { recursive: true });
@@ -25,6 +27,11 @@ function copyAssets() {
     if (fs.existsSync(asset)) {
       fs.copyFileSync(asset, path.join(outDir, asset));
     }
+  }
+  const icons = path.join("icons", "iconpark.json");
+  if (fs.existsSync(icons)) {
+    fs.mkdirSync(path.join(outDir, "icons"), { recursive: true });
+    fs.copyFileSync(icons, path.join(outDir, icons));
   }
 }
 

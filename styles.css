@@ -84,7 +84,7 @@
   cursor: pointer;
 }
 
-/* Small live icon preview next to each category row in settings. */
+/* Live icon preview beside each category row. */
 .ai-icon-preview {
   display: inline-flex;
   align-items: center;
@@ -97,6 +97,74 @@
 .ai-icon-preview svg {
   width: 1.1em;
   height: 1.1em;
+}
+
+/* Sub-heading separating built-in categories from the user's own. */
+.ai-subhead {
+  margin: 1.2em 0 0.3em;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+}
+
+/*
+ * Category rows carry only buttons on the control side, with keywords collapsed behind a
+ * disclosure. Without this the setting item stretches to fit four controls and 32 rows turn into a
+ * wall of vertical space.
+ */
+.ai-cat-row {
+  align-items: center;
+  padding: 0.35em 0;
+  border-top: none;
+}
+
+.ai-cat-row .setting-item-info {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.ai-cat-row .setting-item-description {
+  margin: 0;
+}
+
+.ai-cat-row .setting-item-control {
+  flex-wrap: nowrap;
+  gap: 0.2em;
+}
+
+.ai-cat-row .setting-item-control .clickable-icon {
+  padding: 0.2em 0.35em;
+}
+
+.ai-cat-details {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 0.3em;
+}
+
+.ai-cat-summary {
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+}
+
+.ai-cat-kws {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-cat-kw-row {
+  border-top: none;
+  padding: 0.3em 0 0 1em;
 }
 
 /* Weight sliders read better without the long default description taking a full row each. */

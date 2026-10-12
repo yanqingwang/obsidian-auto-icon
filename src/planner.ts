@@ -1,23 +1,29 @@
 import type { Classification } from "./classifier";
+import type { IconShape, IconThemeName, Placement } from "./placement";
 
 /**
- * The scan pipeline: propose, show, then write.
+ * The scan pipeline, retargeted from frontmatter to the top of the note.
  *
- * Planning is a separate pass from writing for the same reason it is in the sibling plugin — the
- * preview the user approves and the change that gets applied are computed from the same code, so
- * the preview cannot drift from what actually happens.
+ * "What icon does this note already have?" is now a question about the note *body* rather than its
+ * metadata, so the comparison that decides assign-vs-replace compares the icon identity rather than
+ * a stored string. An identical icon is not a change, and a note whose icon merely differs in size
+ * is not either — both would produce a pointless rewrite on every run.
  */
 
 export interface ScanInput {
   readonly path: string;
-  /** Current `icon` frontmatter value, or null. */
-  readonly currentIcon: string | null;
+  /** Icon already present at the top of the body, or `null`. */
+  readonly current: Placement | null;
   readonly classification: Classification;
-  /** The icon reference that will actually be written. */
+  readonly categoryId: string | null;
   readonly icon: string | null;
+  /** Shape resolved for `icon`, needed only when the change will actually be written. */
+  readonly shape: IconShape | null;
+  readonly theme: IconThemeName;
+  readonly size: number;
 }
 
-export type ChangeAction = "assign" | "replace" | "clear" | "skip";
+export type ChangeAction = "assign" | "replace" | "retarget" | "clear" | "skip";
 
 export interface IconChange {
   readonly path: string;
@@ -26,72 +32,82 @@ export interface IconChange {
   readonly after: string | null;
   readonly categoryId: string | null;
   readonly reasons: readonly string[];
+  /** Present on every change that writes. */
+  readonly shape: IconShape | null;
+  readonly theme: IconThemeName;
+  readonly size: number;
 }
 
 export interface ScanPlan {
   readonly changes: IconChange[];
-  /** Notes considered but left untouched. */
   readonly unchanged: number;
-  /** Notes with no icon whose classification fell below the threshold. */
   readonly unmatched: number;
 }
 
-/**
- * Turn per-note results into the list of writes, honouring the overwrite policy.
- *
- * A classification that did not clear the bar produces a `skip`, never a `clear` — the plugin does
- * not remove icons it merely failed to replace.
- */
-export function buildPlan(
-  inputs: readonly ScanInput[],
-  options: { overwriteExisting: boolean }
-): ScanPlan {
+export function buildPlan(inputs: readonly ScanInput[], options: { overwriteExisting: boolean }): ScanPlan {
   const changes: IconChange[] = [];
   let unchanged = 0;
   let unmatched = 0;
 
   for (const input of inputs) {
-    const hasCategory = input.classification.categoryId !== null && input.icon !== null;
+    const wantsIcon = input.categoryId !== null && input.icon !== null;
 
-    if (!hasCategory) {
-      if (input.currentIcon !== null) unchanged += 1;
+    if (!wantsIcon) {
+      // A note we failed to classify keeps whatever icon it already has. Failing to match is not a
+      // reason to remove something.
+      if (input.current) unchanged += 1;
       else unmatched += 1;
       continue;
     }
 
-    if (input.currentIcon === input.icon) {
+    const sameIcon = input.current?.icon === input.icon;
+    const sameTheme = input.current?.theme === input.theme;
+    const sameSize = input.current?.size === input.size;
+
+    if (sameIcon && sameTheme && sameSize) {
       unchanged += 1;
       continue;
     }
 
-    if (input.currentIcon !== null && !options.overwriteExisting) {
+    if (input.current && !options.overwriteExisting) {
       unchanged += 1;
       continue;
     }
+
+    const action: ChangeAction = !input.current ? "assign" : sameIcon ? "retarget" : "replace";
 
     changes.push({
       path: input.path,
-      action: input.currentIcon === null ? "assign" : "replace",
-      before: input.currentIcon,
+      action,
+      before: input.current ? describe(input.current) : null,
       after: input.icon,
-      categoryId: input.classification.categoryId,
+      categoryId: input.categoryId,
       reasons: input.classification.reasons,
+      shape: input.shape,
+      theme: input.theme,
+      size: input.size,
     });
   }
 
   return { changes, unchanged, unmatched };
 }
 
-/** One-line summary for the preview and the result notice. */
+/** Short label for the preview and the log. */
 export function describeChange(change: IconChange): string {
   switch (change.action) {
     case "assign":
       return `新增 ${change.after}`;
     case "replace":
       return `${change.before} → ${change.after}`;
+    case "retarget":
+      return `样式更新 ${change.before} → ${change.after}`;
     case "clear":
       return `移除 ${change.before}`;
     case "skip":
       return "跳过";
   }
+}
+
+function describe(p: Placement): string {
+  return `${p.icon}·${p.theme}`;
 }

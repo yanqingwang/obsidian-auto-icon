@@ -1,36 +1,35 @@
 import type { Plugin } from "obsidian";
+import type { AiConfig } from "./ai";
+import { DEFAULT_AI_CONFIG } from "./ai";
 import type { Category } from "./categories";
 import type { SignalWeights } from "./classifier";
-import { DEFAULT_AI_CONFIG, type AiConfig } from "./ai";
-import type { UserIconSource } from "./sources";
+import { DEFAULT_ACCENT, type IconThemeName } from "./placement";
 
 /**
  * Plugin settings.
  *
- * Everything the user can change lives here, including the categories themselves and any icon
- * sources they added. Persisted to `data.json` inside the plugin's own folder, which is also where
- * the optional AI key goes.
+ * Note what is *not* here any more: a free-text icon reference field. The previous version let a
+ * user type `lucide:folder-kanban` by hand, which is a typo waiting to happen and gives no way to
+ * see the icon before committing to it. Icon and style are now both pickers, and the only string a
+ * user can type is a category's keywords.
  */
 
 export interface AutoIconSettings {
   categories: Category[];
-  /** Sources the user added, on top of the built-in `lucide` and `emoji` pools. */
-  userSources: UserIconSource[];
-  /** Overwrite an icon that already exists in frontmatter. */
+  /** Which IconPark theme to paint with. Themes are colour mappings, so all four ship together. */
+  iconTheme: IconThemeName;
+  /** Secondary colour used by the two-tone and multi-colour themes. */
+  accentColor: string;
+  /** Rendered icon height in pixels. */
+  iconSize: number;
+  /** Overwrite an icon that is already at the top of a note. */
   overwriteExisting: boolean;
   /** Folder the scan is limited to. Empty means the whole vault. */
   scopeFolder: string;
   includeSubfolders: boolean;
   /** Show proposed changes before anything is written. */
   previewBeforeWrite: boolean;
-  /**
-   * Minimum score required to assign an icon.
-   *
-   * Default 4 sits just below the folder weight (6) and equal to the filename weight, and above the
-   * heading (3) and body (1). So a deliberate signal — an explicit `#task` tag, or a folder named
-   * after the category — assigns an icon, while a passing word in the prose does not. That is the
-   * line between a useful auto-icon and a vault where every note carries an arbitrary glyph.
-   */
+  /** Minimum score for a rule match to be applied. */
   minScore: number;
   weights: SignalWeights;
   ai: AiConfig;
@@ -40,7 +39,9 @@ export interface AutoIconSettings {
 
 export const DEFAULT_SETTINGS: AutoIconSettings = {
   categories: [],
-  userSources: [],
+  iconTheme: "outline",
+  accentColor: DEFAULT_ACCENT,
+  iconSize: 20,
   overwriteExisting: false,
   scopeFolder: "",
   includeSubfolders: true,
@@ -61,23 +62,19 @@ export const DEFAULT_SETTINGS: AutoIconSettings = {
 
 /** The one sentence the user is shown to turn auto-icon on. */
 export const ACTIVATION_HINT =
-  "Auto Icon 已就绪 —— 运行命令「为当前笔记分配图标」，或在设置里点「扫描整个 vault」即可开始。";
+  "Auto Icon 已就绪 —— 运行命令「为当前笔记添加图标」，图标会出现在笔记开头。";
 
-/** Settings as stored, filling in anything a older/newer `data.json` is missing. */
+/** Settings as stored, filling in anything an older or newer `data.json` is missing. */
 export function withDefaults(raw: unknown): AutoIconSettings {
   const stored = (raw ?? {}) as Partial<AutoIconSettings>;
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
     categories: Array.isArray(stored.categories) ? stored.categories : [],
-    userSources: Array.isArray(stored.userSources) ? stored.userSources : [],
     weights: { ...DEFAULT_SETTINGS.weights, ...(stored.weights ?? {}) },
     ai: { ...DEFAULT_AI_CONFIG, ...(stored.ai ?? {}) },
   };
 }
-
-/** Key written into note frontmatter. */
-export const FRONTMATTER_KEY = "icon";
 
 /**
  * The slice of the plugin the settings tab needs.
@@ -90,6 +87,7 @@ export interface AutoIconHost extends Plugin {
   saveSettings(): Promise<void>;
   showActivationHint(): void;
   readonly remainingCategorySlots: number;
-  pickIconForCurrentNote(): Promise<void>;
+  loadIconSet(): Promise<import("./iconset").IconSetMeta>;
+  pickIconForCategory(categoryId: string): Promise<void>;
   clearCurrentNoteIcon(): Promise<void>;
 }

@@ -1,11 +1,12 @@
 {
   "name": "obsidian-auto-icon",
   "version": "0.1.0",
-  "description": "Automatically assign an icon to each note based on its content.",
+  "description": "Put an icon at the top of each note, chosen from its content.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "icons": "node scripts/build-iconpark.mjs",
+    "build": "npm run icons && tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "test": "jest --passWithNoTests",
     "smoke": "npm run build && node scripts/smoke.js main.js"
@@ -15,11 +16,13 @@
     "icon",
     "frontmatter",
     "classify",
-    "lucide"
+    "iconpark",
+    "markdown"
   ],
   "author": "rosswang",
   "license": "MIT",
   "devDependencies": {
+    "@icon-park/svg": "^1.4.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",

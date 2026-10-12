@@ -1,27 +1,33 @@
 import { App, Modal } from "obsidian";
-import { iconRefLabel } from "./sources";
 import type { ScanPlan } from "./planner";
+import { renderIconLine, THEMES } from "./placement";
+import type { IconThemeName } from "./placement";
 
 /**
- * Preview of proposed icon assignments.
+ * Preview of proposed icon changes.
  *
- * Shows the before → after per note plus *why* each was chosen, because the single most likely
- * complaint about an auto-tagging plugin is "why did it think this was a 会议?" — and the honest
- * answer is usually a tag the user forgot was there. Showing the evidence makes that answerable
- * without reading the plugin's source.
+ * Shows the actual rendered icon next to each note, plus *why* it was chosen — because the single
+ * most likely complaint about an auto-tagging plugin is "why did it think this was a meeting?", and
+ * the honest answer is usually a tag the user forgot was there. Showing the evidence makes that
+ * answerable without reading the plugin's source.
  */
 
 export interface PreviewRequest {
   readonly plan: ScanPlan;
   readonly scopeDescription: string;
-  readonly matchedCount: number;
-  readonly consideredCount: number;
+  readonly matched: number;
+  readonly considered: number;
   readonly aiEnabled: boolean;
+  readonly theme: IconThemeName;
 }
 
 const MAX_RENDERED = 300;
 
-export class IconPreviewModal extends Modal {
+function themeLabel(name: IconThemeName): string {
+  return THEMES.find((t) => t.name === name)?.label ?? name;
+}
+
+export class PreviewModal extends Modal {
   private readonly request: PreviewRequest;
   private readonly onConfirm: () => void;
 
@@ -37,15 +43,15 @@ export class IconPreviewModal extends Modal {
     this.titleEl.setText("Auto Icon — 即将写入的图标");
 
     const assign = plan.changes.filter((c) => c.action === "assign").length;
-    const replace = plan.changes.length - assign;
+    const rest = plan.changes.length - assign;
 
     contentEl.createEl("p", {
       cls: "ai-summary",
-      text: `将修改 ${plan.changes.length} 个文件（新增 ${assign} · 覆盖 ${replace}） · 范围：${this.request.scopeDescription}`,
+      text: `将修改 ${plan.changes.length} 个文件（新增 ${assign} · 更新 ${rest}） · 样式：${themeLabel(this.request.theme)} · 范围：${this.request.scopeDescription}`,
     });
     contentEl.createEl("p", {
       cls: "ai-muted",
-      text: `共扫描 ${this.request.consideredCount} 个笔记，命中 ${this.request.matchedCount} 个；${plan.unchanged} 个保持不变，${plan.unmatched} 个未匹配到类别（不会写入图标）。`,
+      text: `扫描 ${this.request.considered} 个笔记，命中 ${this.request.matched} 个；${plan.unchanged} 个保持不变，${plan.unmatched} 个未匹配到类别（不会写入，也不会清除已有图标）。`,
     });
 
     if (this.request.aiEnabled) {
@@ -57,19 +63,7 @@ export class IconPreviewModal extends Modal {
 
     const list = contentEl.createDiv({ cls: "ai-files" });
     const shown = plan.changes.slice(0, MAX_RENDERED);
-    for (const change of shown) {
-      const row = list.createDiv({ cls: "ai-row" });
-      row.createSpan({ cls: "ai-path", text: change.path });
-      const values = row.createSpan({ cls: "ai-values" });
-      if (change.before) {
-        values.createEl("code", { cls: "ai-before", text: iconRefLabel(change.before) });
-        values.createSpan({ cls: "ai-arrow", text: "→" });
-      }
-      values.createEl("code", { cls: "ai-after", text: change.after ? iconRefLabel(change.after) : "—" });
-      if (change.reasons.length > 0) {
-        row.createDiv({ cls: "ai-reasons", text: change.reasons.join("；") });
-      }
-    }
+    for (const change of shown) this.renderRow(list, change);
     if (plan.changes.length > shown.length) {
       list.createEl("p", {
         cls: "ai-muted",
@@ -90,6 +84,28 @@ export class IconPreviewModal extends Modal {
       if (plan.changes.length > 0) this.onConfirm();
     });
     apply.focus();
+  }
+
+  private renderRow(parent: HTMLElement, change: ScanPlan["changes"][number]): void {
+    const row = parent.createDiv({ cls: "ai-row" });
+
+    const head = row.createDiv({ cls: "ai-row-head" });
+    if (change.shape) {
+      head.createDiv({ cls: "ai-icon-preview" }).innerHTML = renderIconLine(
+        change.shape,
+        change.after ?? "",
+        change.theme,
+        change.size
+      );
+    }
+    head.createSpan({ cls: "ai-path", text: change.path });
+    if (change.before && change.action === "replace") {
+      head.createSpan({ cls: "ai-was", text: `原 ${change.before}` });
+    }
+
+    if (change.reasons.length > 0) {
+      row.createDiv({ cls: "ai-reasons", text: change.reasons.join("；") });
+    }
   }
 
   onClose(): void {

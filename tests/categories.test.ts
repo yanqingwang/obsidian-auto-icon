@@ -4,6 +4,13 @@ import {
   cloneCategories,
   DEFAULT_CATEGORIES,
 } from "../src/categories";
+import { readFileSync } from "fs";
+import path from "path";
+import { hasIcon, type IconSetMeta } from "../src/iconset";
+
+const SET = JSON.parse(
+  readFileSync(path.join(__dirname, "..", "icons", "iconpark.json"), "utf8")
+) as IconSetMeta;
 
 describe("the 32 categories", () => {
   it("ships exactly the requested number", () => {
@@ -16,17 +23,16 @@ describe("the 32 categories", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("gives every category a parseable icon reference and a fallback", () => {
-    for (const category of DEFAULT_CATEGORIES) {
-      expect(category.icon).toMatch(/^[a-z]+:/);
-      expect(category.fallbackIcon).toMatch(/^[a-z]+:/);
-      expect(category.icon).not.toBe(category.fallbackIcon);
-    }
+  it("gives every category an icon that exists in the shipped set", () => {
+    // The strongest possible check: against the real generated set, so a name that was renamed or
+    // mistyped upstream cannot ship as a silently blank icon.
+    const missing = DEFAULT_CATEGORIES.filter((c) => !hasIcon(SET, c.icon)).map((c) => c.id);
+    expect(missing).toEqual([]);
   });
 
-  it("falls back to emoji, which always renders", () => {
+  it("uses kebab-case icon names, the form the plugin stores", () => {
     for (const category of DEFAULT_CATEGORIES) {
-      expect(category.fallbackIcon.startsWith("emoji:")).toBe(true);
+      expect(category.icon).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
     }
   });
 
