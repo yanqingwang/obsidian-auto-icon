@@ -69,27 +69,27 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
     this.addCommand({
       id: "assign-current",
-      name: "为当前笔记分配图标",
+      name: "给当前笔记配图标",
       callback: () => void this.scanCurrentNote(),
     });
     this.addCommand({
       id: "scan-vault",
-      name: "扫描整个 vault 并分配图标",
+      name: "给全部笔记配图标",
       callback: () => void this.scanScope(this.settings.scopeFolder),
     });
     this.addCommand({
       id: "scan-folder",
-      name: "扫描当前文件夹并分配图标",
+      name: "给当前文件夹配图标",
       callback: () => void this.scanCurrentFolder(),
     });
     this.addCommand({
       id: "reassign-all",
-      name: "重新扫描并覆盖已有图标",
+      name: "重新分配（覆盖已有图标）",
       callback: () => void this.scanScope(this.settings.scopeFolder, { force: true }),
     });
     this.addCommand({
       id: "pick-icon",
-      name: "手动为当前笔记设置图标",
+      name: "手动设置当前笔记图标",
       callback: () => void this.pickIconForCurrentNote(),
     });
     this.addCommand({
@@ -104,7 +104,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     });
     this.addCommand({
       id: "cleanup-legacy",
-      name: "清理正文中旧版本写入的图标行",
+      name: "清理正文里的旧图标行",
       callback: () => void this.cleanupLegacyLines(),
     });
 
@@ -113,7 +113,47 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     void this.refreshIcons();
     this.registerEvent(this.app.workspace.on("layout-change", () => void this.refreshIcons()));
 
+    this.registerFileMenu();
+
     if (!this.settings.activationHintDismissed) this.showActivationHint();
+  }
+
+  /**
+   * "Assign an icon" on right-clicking a note in the file explorer.
+   *
+   * A feature that lives in the file tree has to be reachable from the file tree. Scanning is the
+   * bulk entry point; this is the per-note one, and it is the only way to act on a single file
+   * without pointing the scope at the folder it happens to sit in.
+   */
+  private registerFileMenu(): void {
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!(file instanceof TFile) || file.extension !== "md") return;
+        menu.addItem((item) =>
+          item
+            .setTitle(this.icons[file.path] ? "重新配图标" : "配图标")
+            .setIcon("sparkles")
+            .onClick(() => void this.assignOne(file))
+        );
+        if (this.icons[file.path]) {
+          menu.addItem((item) =>
+            item
+              .setTitle("移除图标")
+              .setIcon("trash-2")
+              .onClick(async () => {
+                delete this.icons[file.path];
+                await this.saveSettings();
+                await this.refreshIcons();
+              })
+          );
+        }
+      })
+    );
+  }
+
+  /** Assign a single note immediately, bypassing the scope scan. */
+  async assignOne(file: TFile): Promise<void> {
+    await this.runScan([file], file.path, { force: true });
   }
 
   onunload(): void {
@@ -214,6 +254,11 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     await this.scanScope(parent);
   }
 
+  /** The settings-header button: scan whatever scope is configured. */
+  async startScan(): Promise<void> {
+    await this.scanScope(this.settings.scopeFolder);
+  }
+
   async scanScope(scopeFolder: string, options: { force?: boolean } = {}): Promise<void> {
     const files = this.resolveScope(scopeFolder);
     if (files.length === 0) {
@@ -222,8 +267,8 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     }
     const label =
       scopeFolder.trim().length === 0
-        ? `整个 vault（${files.length} 个笔记）`
-        : `"${scopeFolder.trim()}"（${files.length} 个笔记）`;
+        ? `全部笔记（${files.length} 个）`
+        : `「${scopeFolder.trim()}」（${files.length} 个）`;
     await this.runScan(files, label, options);
   }
 
@@ -309,7 +354,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
     if (warnings.length > 0) new Notice(warnings.join("\n"), 10000);
     if (plan.changes.length === 0) {
-      new Notice(`Auto Icon：没有需要分配的图标（扫描 ${files.length} 个笔记）。`);
+      new Notice(`Auto Icon：没有需要分配的图标（处理了 ${files.length} 个笔记）。`);
       return;
     }
 
@@ -344,10 +389,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     }
     await this.saveSettings();
     await this.refreshIcons();
-    new Notice(
-      `Auto Icon：已为 ${plan.changes.length} 个笔记分配图标（文件本身没有被修改）。`,
-      8000
-    );
+    new Notice(`Auto Icon：已给 ${plan.changes.length} 个笔记配好图标，文件没有被修改。`, 8000);
   }
 
   /* ---------------------------------------------------------------- *
@@ -405,7 +447,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     delete this.icons[file.path];
     await this.saveSettings();
     await this.refreshIcons();
-    new Notice(`Auto Icon：已清除 ${file.path} 的图标。`);
+    new Notice(`Auto Icon：已移除 ${file.path} 的图标。`);
   }
 
   private async clearAllIcons(): Promise<void> {

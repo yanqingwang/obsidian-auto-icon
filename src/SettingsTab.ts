@@ -88,16 +88,24 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("怎么开始")
-      .setDesc("一句话：运行命令「为当前笔记分配图标」，图标会出现在左侧文件树里。笔记文件本身不会被修改。")
+      .setDesc("点「开始」处理全部笔记，或先填一个文件夹小范围试。也可以在文件树里右键任意笔记，直接给它配图标。")
+      .addButton((b) =>
+        b
+          .setButtonText("开始")
+          .setCta()
+          .onClick(async () => {
+            await this.plugin.startScan();
+          })
+      )
+      .addButton((b) =>
+        b.setButtonText("用当前文件夹试试").onClick(async () => {
+          await this.plugin.scanCurrentFolder();
+        })
+      )
       .addButton((b) =>
         b.setButtonText("再提示一次").onClick(async () => {
           this.plugin.showActivationHint();
           await this.save();
-        })
-      )
-      .addButton((b) =>
-        b.setButtonText("清除当前笔记图标").onClick(async () => {
-          await this.plugin.clearCurrentNoteIcon();
         })
       );
   }
@@ -124,7 +132,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("图标大小")
-      .setDesc("在文件树里显示的大小（像素）。")
+      .setDesc("图标在文件树里显示的大小（像素）。")
       .addSlider((s) =>
         s.setLimits(12, 32, 1).setDynamicTooltip().setValue(settings.iconSize).onChange(async (value) => {
           settings.iconSize = value;
@@ -134,14 +142,14 @@ export class IconSettingsTab extends PluginSettingTab {
   }
 
   private renderScope(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName("扫描范围").setHeading();
+    new Setting(containerEl).setName("分配范围").setHeading();
     const settings = this.plugin.settings;
 
     new Setting(containerEl)
       .setName("文件夹")
-      .setDesc("留空 = 整个 vault。建议先在一个子文件夹试点，确认效果再全库跑。")
+      .setDesc("留空 = 全部笔记。建议先填一个文件夹小范围试，确认效果再清空这一栏。")
       .addText((text) =>
-        text.setPlaceholder("留空则全库").setValue(settings.scopeFolder).onChange(async (value) => {
+        text.setPlaceholder("留空则全部笔记").setValue(settings.scopeFolder).onChange(async (value) => {
           settings.scopeFolder = value.trim().replace(/^\/+|\/+$/g, "");
           await this.save();
         })
@@ -172,7 +180,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("最低匹配分数")
-      .setDesc("低于这个分数就不分配图标。这是防止给每篇笔记乱贴图标的主要闸门。")
+      .setDesc("低于这个分数就不配图标。这是防止给每篇笔记乱贴图标的主要闸门。")
       .addSlider((s) =>
         s.setLimits(1, 60, 1).setDynamicTooltip().setValue(settings.minScore).onChange(async (value) => {
           settings.minScore = value;
@@ -201,7 +209,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("分配前先预览")
-      .setDesc("先列出将给哪些笔记分配图标、判定依据是什么，确认后再保存。建议保持开启。")
+      .setDesc("先列出将给哪些笔记配图标、判定依据是什么，确认后再保存。建议保持开启。")
       .addToggle((t) =>
         t.setValue(settings.previewBeforeWrite).onChange(async (value) => {
           settings.previewBeforeWrite = value;
@@ -211,7 +219,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("覆盖已有图标")
-      .setDesc("关闭时只给还没有图标的笔记分配 —— 你手动改过的图标不会被自动替换。")
+      .setDesc("关闭时只给还没有图标的笔记配 —— 你手动改过的图标不会被自动替换。")
       .addToggle((t) =>
         t.setValue(settings.overwriteExisting).onChange(async (value) => {
           settings.overwriteExisting = value;
@@ -226,7 +234,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("启用 AI 分类")
-      .setDesc("默认关闭 —— 本地规则已经够用。开启后失败会自动回退到本地规则，不会中断扫描。")
+      .setDesc("默认关闭 —— 本地规则已经够用。开启后如果调用失败会自动回退到本地规则，不会中断。")
       .addToggle((t) =>
         t.setValue(ai.enabled).onChange(async (value) => {
           ai.enabled = value;
@@ -424,7 +432,7 @@ class CategoryEditorModal {
           })
         );
 
-        new Setting(contentEl).setName("mXn 名称").setDesc("可以直接粘贴或手改，例如 folder-outline。").addText((t) =>
+        new Setting(contentEl).setName("图标名").setDesc("mXn 名称，可以直接粘贴，例如 folder-outline。").addText((t) =>
           t.setPlaceholder("folder").setValue(this.host.category.icon).onChange(async (value) => {
             this.host.category.icon = value.trim().toLowerCase();
             await this.host.plugin.saveSettings();

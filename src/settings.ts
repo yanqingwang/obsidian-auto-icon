@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: AutoIconSettings = {
 
 /** The one sentence the user is shown to turn auto-icon on. */
 export const ACTIVATION_HINT =
-  "Auto Icon 已就绪 —— 运行命令「为当前笔记分配图标」，图标会出现在左侧文件树里。";
+  "Auto Icon 已就绪 —— 点下面的「开始」，或在文件树里右键任意笔记选「配图标」。图标显示在文件树里，笔记文件不会被修改。";
 
 /** Settings as stored, filling in anything an older or newer `data.json` is missing. */
 export function withDefaults(raw: unknown): AutoIconSettings {
@@ -91,4 +91,7 @@ export interface AutoIconHost extends Plugin {
   readonly iconSetMeta: import("./iconset").IconSetMeta | null;
   pickIconForCategory(categoryId: string): Promise<void>;
   clearCurrentNoteIcon(): Promise<void>;
+  /** Start a scan using whatever scope is configured — the button in the settings header. */
+  startScan(): Promise<void>;
+  scanCurrentFolder(): Promise<void>;
 }
