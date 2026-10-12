@@ -51,15 +51,19 @@
 
 ---
 
-## 32 个类别
+## 类别：默认 32 个，不设上限
 
-上限是硬性的，在 `assertCategoryLimit` 里强制。
+**32 是内置数量，不是上限。** 想加多少加多少。
 
-设置里**内置类别在前，自定义在后**，各用一个分组标题隔开——自定义类别看起来就该和固定词表区分开。
+之前的版本把 32 写成了硬上限（`assertCategoryLimit`），那是错的：内置词表是给你往外扩展的起点，不是一个封闭集合。现在 `CATEGORY_LIMIT` 和断言一起删掉了，代码里没有任何地方会拒绝第 33 个类别。
+
+设置里**内置类别在前，自定义在后**，各用一个分组标题隔开——自定义类别看起来就该和内置词表区分开。
 
 ### 内置类别的布局
 
-每个类别是**一行**：名称 + id + mXn 名 + 词数 + 一个「编辑」按钮。图标选择、关键词编辑、删除、恢复默认都在点开后弹出的对话框里。
+每个类别是**一行**：**渲染出来的图标** + 名称 + id + mXn 名 + 词数 + 一个「编辑」按钮。图标选择、关键词编辑、删除、恢复默认都在点开后弹出的对话框里。
+
+图标是真的画出来的，不只是名字——32 行的时候，图形才是让列表一眼扫得下去的东西，mXn 名称只是次要的技术细节。图标列固定宽度，否则 32 行会排成参差不齐的一列，反而更难读。
 
 之前是一行塞四个控件（图标预览 + 关键词输入框 + 3 个按钮），把 Obsidian 的 `.setting-item` 撑高，32 行就变成一堵墙。一行只有一个控件才读得下去。
 
@@ -139,7 +143,7 @@ OUTDIR="/path/to/your/vault/.obsidian/plugins/auto-icon" npm run build
 ```bash
 npm run icons       # 重新生成 icons/mdi.json
 npm run typecheck
-npm test            # 143 个测试
+npm test            # 144 个测试
 npm run smoke       # 构建并真实加载 main.js + 读图标集 + 生成样式表
 npm run dev
 ```
@@ -148,6 +152,7 @@ npm run dev
 
 | 文件 | 职责 |
 |---|---|
+| `src/CategoryEditorModal.ts` | 单个类别的编辑对话框（图标 / 关键词 / 删除 / 恢复默认） |
 | `src/store.ts` | 分配表（笔记路径 → 图标），插件的全部持久化状态 |
 | `src/treeIcons.ts` | 由分配表生成 CSS 并注入 |
 | `src/iconset.ts` | mXn 图标集加载（懒加载 + 并发去重）、名称解析、搜索排序 |
@@ -170,7 +175,7 @@ tests/
 ├── treeIcons.test.ts # CSS 生成、路径转义、data URI 编码
 ├── store.test.ts     # 分配表 diff / 清理
 ├── planner.test.ts   # 分配/覆盖/跳过策略
-├── categories.test.ts
+├── categories.test.ts  # 含「编辑器弹窗能打开」的冒烟断言
 ├── classifier.test.ts
 └── ai.test.ts
 ```

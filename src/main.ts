@@ -1,6 +1,6 @@
 import { Notice, Plugin, TFile, normalizePath } from "obsidian";
 import { AiClassifier } from "./ai";
-import { assertCategoryLimit, CATEGORY_LIMIT, cloneCategories } from "./categories";
+import { cloneCategories } from "./categories";
 import { extractSignals, RuleClassifier, type NoteClassifier } from "./classifier";
 // Aliased: the plugin exposes a `loadIconSet()` method too, and an unaliased import of the same
 // name resolves back to the method — which is infinite recursion, not a subtle bug.
@@ -41,7 +41,8 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
   /** Note path -> icon. The entire persisted state of the plugin. */
   icons: IconMap = {};
 
-  private set: IconSetMeta | null = null;
+  /** Loaded icon set; the settings tab needs it to draw category thumbnails. */
+  set: IconSetMeta | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -174,7 +175,6 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
   }
 
   async saveSettings(): Promise<void> {
-    assertCategoryLimit(this.settings.categories);
     this.settings.icons = this.icons;
     await this.saveData(this.settings);
   }
@@ -188,10 +188,6 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
   /** Cached set, loading it if a caller needs it before the first scan. */
   private async requireSet(): Promise<IconSetMeta> {
     return this.set ?? this.loadIconSet();
-  }
-
-  get remainingCategorySlots(): number {
-    return Math.max(0, CATEGORY_LIMIT - this.settings.categories.length);
   }
 
   get iconSetMeta(): IconSetMeta | null {

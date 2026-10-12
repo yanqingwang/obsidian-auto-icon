@@ -128,7 +128,10 @@ const EXPECTED_COMMANDS = [
   if (plugin.settings.categories.length !== 32) {
     problems.push(`expected 32 default categories, got ${plugin.settings.categories.length}`);
   }
-  if (plugin.remainingCategorySlots !== 0) problems.push("category slots miscomputed");
+  // 32 is the default, not a cap: adding more must be possible.
+  plugin.settings.categories.push({ id: "extra", name: "额外", description: "", icon: "star", keywords: [] });
+  if (plugin.settings.categories.length !== 33) problems.push("could not add a 33rd category");
+  plugin.settings.categories.pop();
   if (plugin.settings.ai.enabled) problems.push("AI must be off by default");
   if (!plugin.settings.previewBeforeWrite) problems.push("preview must be on by default");
 

@@ -84,9 +84,10 @@ export function withDefaults(raw: unknown): AutoIconSettings {
  */
 export interface AutoIconHost extends Plugin {
   settings: AutoIconSettings;
+  /** Loaded icon set, or null before the first read. Callers render nothing until it arrives. */
+  readonly set: import("./iconset").IconSetMeta | null;
   saveSettings(): Promise<void>;
   showActivationHint(): void;
-  readonly remainingCategorySlots: number;
   loadIconSet(): Promise<import("./iconset").IconSetMeta>;
   readonly iconSetMeta: import("./iconset").IconSetMeta | null;
   pickIconForCategory(categoryId: string): Promise<void>;

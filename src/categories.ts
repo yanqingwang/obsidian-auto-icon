@@ -1,8 +1,9 @@
 /**
  * The 32 built-in categories, and the keywords that make the local rule engine pick one.
  *
- * The 32 cap is a hard requirement, enforced by `assertCategoryLimit` rather than by convention, so
- * a category added through the settings UI cannot quietly exceed it.
+ * **32 is the default size of this list, not a limit on it.** Adding your own categories is
+ * expected, and there is no cap — an earlier version enforced one and it was wrong: the built-in
+ * vocabulary is a starting point meant to be extended, not a closed set.
  *
  * A category's `icon` is a plain **mXn name (without the `mdi:` prefix)**, not a `"source:key"` reference and not a
  * free-text field. Style is a separate global setting, so switching the whole vault from outline to
@@ -23,8 +24,6 @@ export interface Category {
    */
   keywords: string[];
 }
-
-export const CATEGORY_LIMIT = 32;
 
 /** Row shape for `DEFAULT_CATEGORIES`, kept compact because there are 32 of them. */
 type Row = [id: string, name: string, icon: string, description: string, keywords: string];
@@ -74,16 +73,10 @@ export const DEFAULT_CATEGORIES: readonly Category[] = ROWS.map(
   })
 );
 
-/** Guard for the "no more than 32" rule, enforced wherever categories can grow. */
-export function assertCategoryLimit(categories: readonly Category[]): void {
-  if (categories.length > CATEGORY_LIMIT) {
-    throw new Error(
-      `Auto Icon：类别数量为 ${categories.length}，超过上限 ${CATEGORY_LIMIT}。请先删除一个类别。`
-    );
-  }
-}
-
 /** Fresh copies, so settings edits never mutate the shipped defaults. */
 export function cloneCategories(): Category[] {
   return DEFAULT_CATEGORIES.map((c) => ({ ...c, keywords: [...c.keywords] }));
 }
+
+/** How many categories ship by default. Not a limit — add as many as you like. */
+export const DEFAULT_CATEGORY_COUNT = DEFAULT_CATEGORIES.length;

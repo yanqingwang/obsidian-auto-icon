@@ -180,9 +180,28 @@
   display: flex;
   align-items: center;
   gap: 0.6em;
-  padding: 0.3em 0.6em;
+  padding: 0.25em 0.6em;
   border-bottom: 1px solid var(--background-modifier-border);
   cursor: default;
+}
+
+/*
+ * Rendered icon for each category row. Fixed-width so the 32 rows stay in a clean column — at that
+ * many rows the picture is what makes the list scannable, and a ragged column of varying widths
+ * would undo that.
+ */
+.ai-cat-thumb {
+  flex: 0 0 1.4em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-normal);
+}
+
+.ai-cat-thumb svg {
+  width: 1em;
+  height: 1em;
+  max-width: 1em;
 }
 
 .ai-cat:last-child {
@@ -199,6 +218,7 @@
 
 .ai-cat-name {
   flex: 0 0 5.5em;
+  white-space: nowrap;
   font-weight: var(--font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
