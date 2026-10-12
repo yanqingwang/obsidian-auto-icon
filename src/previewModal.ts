@@ -53,6 +53,13 @@ export class PreviewModal extends Modal {
       text: `扫描 ${this.request.considered} 个笔记，命中 ${this.request.matched} 个；${plan.unchanged} 个保持不变，${plan.unmatched} 个未匹配到类别（不会分配，也不会清除已有图标）。笔记文件本身不会被修改。`,
     });
 
+    if (plan.protectedManual.length > 0) {
+      contentEl.createEl("p", {
+        cls: "ai-muted",
+        text: `其中 ${plan.protectedManual.length} 个笔记的图标是你手动选的，已跳过，不会被自动结果覆盖。`,
+      });
+    }
+
     if (this.request.aiEnabled) {
       contentEl.createEl("p", {
         cls: "ai-muted",

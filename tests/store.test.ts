@@ -1,4 +1,4 @@
-import { diff, pruneMissing, reconcile, sameAssignment, type IconMap } from "../src/store";
+import { diff, isManual, pruneMissing, reconcile, sameAssignment, type IconMap } from "../src/store";
 
 /**
  * The store is the plugin's entire persisted state, so these check the two things that would be
@@ -86,5 +86,17 @@ describe("reconciling", () => {
       "ghost.md": { categoryId: "x", icon: "star", style: "filled", size: 16 },
     };
     expect(Object.keys(reconcile({}, next, (p) => live.has(p)))).toEqual(["a.md"]);
+  });
+});
+describe("recognising a hand-picked icon", () => {
+  it("is true only for a manual assignment", () => {
+    expect(isManual({ categoryId: "x", icon: "star", style: "filled", size: 16, manual: true })).toBe(true);
+    expect(isManual({ categoryId: "x", icon: "star", style: "filled", size: 16 })).toBe(false);
+    expect(isManual(undefined)).toBe(false);
+  });
+
+  it("does not treat a legacy entry without the flag as manual", () => {
+    // Entries written before `manual` existed must not suddenly become untouchable.
+    expect(isManual({ categoryId: "legacy", icon: "star", style: "filled", size: 16 })).toBe(false);
   });
 });

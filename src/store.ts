@@ -17,6 +17,13 @@ export interface Assignment {
   readonly icon: string;
   readonly style: string;
   readonly size: number;
+  /**
+   * True when a person chose this icon rather than the classifier.
+   *
+   * This is what makes "the classifier got it wrong" recoverable: a manual pick is a deliberate
+   * decision, so a later bulk scan will not silently replace it, and the preview says so instead.
+   */
+  readonly manual?: boolean;
 }
 
 export type IconMap = Record<string, Assignment>;
@@ -44,6 +51,11 @@ export function diff(current: IconMap, next: IconMap): { added: string[]; change
 
 export function sameAssignment(a: Assignment, b: Assignment): boolean {
   return a.icon === b.icon && a.style === b.style && a.size === b.size;
+}
+
+/** Assignments a person chose by hand, as opposed to the classifier's guesses. */
+export function isManual(a: Assignment | undefined): boolean {
+  return a?.manual === true;
 }
 
 /** Merge assignments in, dropping any whose file no longer exists. */

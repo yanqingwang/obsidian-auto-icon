@@ -1,6 +1,6 @@
 import type { Classification } from "./classifier";
 import type { IconStyle } from "./placement";
-import type { IconMap } from "./store";
+import { isManual, type IconMap } from "./store";
 
 /**
  * The scan pipeline, retargeted from writing files to updating the plugin's own map.
@@ -39,6 +39,13 @@ export interface ScanPlan {
   readonly changes: IconChange[];
   readonly unchanged: number;
   readonly unmatched: number;
+  /**
+   * Notes skipped *because* their icon was chosen by hand.
+   *
+   * Reported rather than hidden: a bulk run that quietly left 40 manual picks alone looks like the
+   * plugin half worked, and the user has no way to tell which notes those were.
+   */
+  readonly protectedManual: string[];
 }
 
 export interface PlanOptions {
@@ -49,24 +56,32 @@ export interface PlanOptions {
 
 export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): ScanPlan {
   const changes: IconChange[] = [];
+  const protectedManual: string[] = [];
   let unchanged = 0;
   let unmatched = 0;
 
   for (const input of inputs) {
     const wanted = input.categoryId !== null && input.icon !== null;
-
-    if (!wanted) {
-      // Failing to classify never clears an icon. Not matching is not a reason to remove something
-      // the user may have picked deliberately.
-      if (input.existing) unchanged += 1;
-      else unmatched += 1;
-      continue;
-    }
-
     const before = options.current[input.path] ?? input.existing ?? null;
     const sameIcon = before?.icon === input.icon;
     const sameStyle = before?.style === input.style;
     const sameSize = before?.size === input.size;
+
+    // A manual pick survives even a forced rescan. The classifier getting something wrong is the
+    // normal case, not an edge case, so correcting it must not be undone by the next bulk run.
+    if (isManual(before) && wanted && !sameIcon) {
+      protectedManual.push(input.path);
+      unchanged += 1;
+      continue;
+    }
+
+    if (!wanted) {
+      // Failing to classify never clears an icon. Not matching is not a reason to remove something
+      // the user may have picked deliberately.
+      if (before) unchanged += 1;
+      else unmatched += 1;
+      continue;
+    }
 
     if (sameIcon && sameStyle && sameSize) {
       unchanged += 1;
@@ -90,7 +105,7 @@ export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): S
     });
   }
 
-  return { changes, unchanged, unmatched };
+  return { changes, unchanged, unmatched, protectedManual };
 }
 
 /** One-line summary for the preview and the log. */

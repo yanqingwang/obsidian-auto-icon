@@ -22,7 +22,7 @@ import {
   type AutoIconSettings,
   type AutoIconHost,
 } from "./settings";
-import { pruneMissing, type IconMap } from "./store";
+import { isManual, type IconMap } from "./store";
 import { applyStylesheet, buildCss, removeStylesheet, wrapCss } from "./treeIcons";
 
 /**
@@ -130,22 +130,40 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || file.extension !== "md") return;
+        const assigned = this.icons[file.path];
+
         menu.addItem((item) =>
           item
-            .setTitle(this.icons[file.path] ? "重新配图标" : "配图标")
-            .setIcon("sparkles")
+            .setTitle(assigned ? "重新自动识别" : "自动识别图标")
+            .setIcon("wand-sparkles")
             .onClick(() => void this.assignOne(file))
         );
-        if (this.icons[file.path]) {
-          menu.addItem((item) =>
-            item
-              .setTitle("移除图标")
-              .setIcon("trash-2")
-              .onClick(async () => {
-                delete this.icons[file.path];
+
+        // The way out of a wrong guess. Re-running the classifier just repeats the mistake, so
+        // choosing by hand has to be a first-class action, not something behind the command palette.
+        menu.addItem((item) =>
+          item
+            .setTitle("手动选择图标…")
+            .setIcon("image-search")
+            .onClick(() => void this.pickIconFor(file))
+        );
+
+        if (assigned) {
+          if (!isManual(assigned)) {
+            menu.addItem((item) =>
+              item.setTitle("标记为手动选择").setIcon("pin").onClick(async () => {
+                this.icons[file.path] = { ...assigned, manual: true };
                 await this.saveSettings();
-                await this.refreshIcons();
+                new Notice(`已把 ${file.path} 的图标标记为手动选择，之后批量扫描不会覆盖它。`);
               })
+            );
+          }
+          menu.addItem((item) =>
+            item.setTitle("移除图标").setIcon("trash-2").onClick(async () => {
+              delete this.icons[file.path];
+              await this.saveSettings();
+              await this.refreshIcons();
+            })
           );
         }
       })
@@ -398,6 +416,16 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
       new Notice("Auto Icon：没有打开的笔记。");
       return;
     }
+    await this.pickIconFor(file);
+  }
+
+  /**
+   * Choose a note's icon by hand.
+   *
+   * Marked `manual` so a later bulk run leaves it alone: correcting a wrong guess and then having
+   * the next scan undo it would make the correction pointless.
+   */
+  async pickIconFor(file: TFile): Promise<void> {
     const set = await this.requireSet();
     const chosen = await new Promise<string | null>((resolve) => {
       const modal = new IconPickerModal(this.app, set, this.settings.iconStyle, (value) => resolve(value));

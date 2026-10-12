@@ -13,6 +13,7 @@ const input = (over: Partial<ScanInput> = {}): ScanInput => ({
 });
 
 const NONE = { overwriteExisting: false, current: {} as IconMap };
+const manual = (icon: string) => ({ categoryId: "custom", icon, style: "filled", size: 16, manual: true });
 
 describe("assigning", () => {
   it("assigns a note with no icon yet", () => {
@@ -145,5 +146,48 @@ describe("counts", () => {
     const plan = buildPlan([], NONE);
     expect(plan.changes).toEqual([]);
     expect(plan.unchanged).toBe(0);
+  });
+});
+/**
+ * The recovery path for a wrong guess.
+ *
+ * Re-running the classifier just repeats the mistake, so a hand-picked icon has to survive the next
+ * bulk scan — including a forced one, which exists precisely for the notes the classifier keeps
+ * getting wrong.
+ */
+describe("hand-picked icons are protected", () => {
+  const current: IconMap = { "a.md": manual("compass") };
+
+  it("survives a forced rescan that disagrees", () => {
+    const plan = buildPlan([input()], { overwriteExisting: true, current });
+    expect(plan.changes).toEqual([]);
+    expect(plan.protectedManual).toEqual(["a.md"]);
+  });
+
+  it("survives a normal rescan too", () => {
+    const plan = buildPlan([input()], { overwriteExisting: false, current });
+    expect(plan.changes).toEqual([]);
+    expect(plan.protectedManual).toEqual(["a.md"]);
+  });
+
+  it("still allows a style change on a manual icon", () => {
+    // Protecting the *choice of icon* must not freeze its appearance: a global restyle is not a
+    // re-guess. Same icon name, different style.
+    const sameIcon: IconMap = { "a.md": manual("checkbox-marked-circle") };
+    const plan = buildPlan([input({ style: "outline" })], { overwriteExisting: true, current: sameIcon });
+    expect(plan.changes).toHaveLength(1);
+    expect(plan.protectedManual).toEqual([]);
+  });
+
+  it("does not protect a classifier-chosen icon", () => {
+    const machine: IconMap = { "a.md": { categoryId: "task", icon: "star", style: "filled", size: 16 } };
+    const plan = buildPlan([input()], { overwriteExisting: true, current: machine });
+    expect(plan.changes).toHaveLength(1);
+    expect(plan.protectedManual).toEqual([]);
+  });
+
+  it("does not report a manual icon as protected when the classifier agrees", () => {
+    const agreeing: IconMap = { "a.md": manual("checkbox-marked-circle") };
+    expect(buildPlan([input()], { overwriteExisting: true, current: agreeing }).protectedManual).toEqual([]);
   });
 });
