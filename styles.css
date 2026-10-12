@@ -1,4 +1,4 @@
-/* Auto Icon — preview dialog and settings page. */
+/* Auto Icon — preview, picker, settings. */
 
 .ai-summary {
   margin: 0 0 0.35em;
@@ -11,6 +11,89 @@
   font-size: var(--font-ui-smaller);
 }
 
+/* ---------------------------------------------------------------- *
+ * Icon picker
+ * ---------------------------------------------------------------- */
+
+.ai-search {
+  width: 100%;
+  margin-bottom: 0.5em;
+}
+
+.ai-style-row {
+  display: flex;
+  gap: 0.3em;
+  margin-bottom: 0.4em;
+}
+
+.ai-style-row button {
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  padding: 0.15em 0.7em;
+}
+
+.ai-style-row button.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.ai-result {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 0.4em;
+}
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.2em, 1fr));
+  gap: 0.15em;
+  max-height: min(50vh, 460px);
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 0.3em;
+}
+
+.ai-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3em;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--text-normal);
+}
+
+.ai-cell:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Requested outline style that had to fall back to the filled twin. */
+.ai-cell-fallback {
+  opacity: 0.55;
+}
+
+.ai-cell svg {
+  width: 1.3em;
+  height: 1.3em;
+}
+
+.ai-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  margin-top: 0.5em;
+}
+
+.ai-picker-footer button {
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- *
+ * Preview
+ * ---------------------------------------------------------------- */
+
 .ai-files {
   max-height: min(52vh, 520px);
   overflow-y: auto;
@@ -21,7 +104,11 @@
 }
 
 .ai-row {
-  padding: 0.3em 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45em;
+  padding: 0.25em 0;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -29,45 +116,35 @@
   border-bottom: none;
 }
 
+.ai-row-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.ai-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  align-items: baseline;
+  min-width: 0;
+}
+
 .ai-path {
-  display: block;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
 }
 
-.ai-values {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4em;
-  margin-top: 0.15em;
-}
-
-.ai-values code {
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  padding: 0.05em 0.35em;
-  border-radius: var(--radius-s);
-}
-
-.ai-before {
-  background: var(--background-modifier-error-hover);
-  text-decoration: line-through;
-  text-decoration-color: var(--text-error);
-  color: var(--text-muted);
-}
-
-.ai-after {
-  background: var(--background-modifier-success-hover);
-}
-
-.ai-arrow {
+.ai-was {
   color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-decoration: line-through;
 }
 
-/* Why the plugin chose what it chose — the question every auto-tagger gets asked. */
 .ai-reasons {
-  margin-top: 0.15em;
+  flex-basis: 100%;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-style: italic;
@@ -84,7 +161,92 @@
   cursor: pointer;
 }
 
-/* Live icon preview beside each category row. */
+/* ---------------------------------------------------------------- *
+ * Category list
+ *
+ * One compact line per category. A full Setting row per category — a text field plus several
+ * buttons — is what made a 32-item list unreadable; everything else moved into a modal.
+ * ---------------------------------------------------------------- */
+
+.ai-cat-list {
+  margin: 0.4em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  max-height: min(45vh, 420px);
+  overflow-y: auto;
+}
+
+.ai-cat {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.3em 0.6em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: default;
+}
+
+.ai-cat:last-child {
+  border-bottom: none;
+}
+
+.ai-cat:hover {
+  background: var(--background-modifier-hover);
+}
+
+.ai-cat.is-custom {
+  background: var(--background-modifier-success-hover);
+}
+
+.ai-cat-name {
+  flex: 0 0 5.5em;
+  font-weight: var(--font-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-cat-id {
+  flex: 0 0 6.5em;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mXn name, always visible so the mapping stays legible. */
+.ai-cat-icon {
+  flex: 1 1 auto;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-cat-kwcount {
+  flex: 0 0 auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.ai-cat-edit {
+  flex: 0 0 auto;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  padding: 0.1em 0.6em;
+}
+
+.ai-cat-divider {
+  padding: 0.35em 0.6em;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+}
+
 .ai-icon-preview {
   display: inline-flex;
   align-items: center;
@@ -95,81 +257,11 @@
 }
 
 .ai-icon-preview svg {
-  width: 1.1em;
-  height: 1.1em;
+  width: 1.2em;
+  height: 1.2em;
 }
 
-/* Sub-heading separating built-in categories from the user's own. */
-.ai-subhead {
-  margin: 1.2em 0 0.3em;
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-}
-
-/*
- * Category rows carry only buttons on the control side, with keywords collapsed behind a
- * disclosure. Without this the setting item stretches to fit four controls and 32 rows turn into a
- * wall of vertical space.
- */
-.ai-cat-row {
-  align-items: center;
-  padding: 0.35em 0;
-  border-top: none;
-}
-
-.ai-cat-row .setting-item-info {
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: center;
-  gap: 0.4em;
-}
-
-.ai-cat-row .setting-item-description {
-  margin: 0;
-}
-
-.ai-cat-row .setting-item-control {
-  flex-wrap: nowrap;
-  gap: 0.2em;
-}
-
-.ai-cat-row .setting-item-control .clickable-icon {
-  padding: 0.2em 0.35em;
-}
-
-.ai-cat-details {
-  flex-basis: 100%;
-  width: 100%;
-  margin-top: 0.3em;
-}
-
-.ai-cat-summary {
-  cursor: pointer;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  display: flex;
-  gap: 0.5em;
-  align-items: baseline;
-}
-
-.ai-cat-kws {
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ai-cat-kw-row {
-  border-top: none;
-  padding: 0.3em 0 0 1em;
-}
-
-/* Weight sliders read better without the long default description taking a full row each. */
-.ai-weight-row {
-  border-top: none;
-  padding-top: 0.2em;
-  padding-bottom: 0.2em;
+.ai-compact {
+  padding-top: 0.1em;
+  padding-bottom: 0.1em;
 }

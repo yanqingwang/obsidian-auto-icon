@@ -3,7 +3,7 @@
   "name": "Auto Icon",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Put an icon at the top of each note, chosen from its content. 32 built-in categories, local rules by default with an optional AI classifier. The full IconPark icon set ships with the plugin.",
+  "description": "Give each note an icon in the file explorer, chosen from its content. 32 built-in categories, local rules by default. The full Material Design Icons set ships with the plugin. Notes are never modified.",
   "author": "rosswang",
   "authorUrl": "https://github.com/yanqingwang",
   "isDesktopOnly": false

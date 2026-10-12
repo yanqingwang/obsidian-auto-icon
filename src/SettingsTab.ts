@@ -2,20 +2,21 @@ import { FuzzySuggestModal, Notice, PluginSettingTab, Setting, TFolder, type App
 import { CATEGORY_LIMIT, DEFAULT_CATEGORIES, type Category } from "./categories";
 import type { SignalWeightsKey } from "./classifier";
 import { IconPickerModal } from "./IconPickerModal";
-import { loadedIconSet, shapeFor } from "./iconset";
-import { renderIconLine, THEMES, themeByName, type IconThemeName } from "./placement";
+import { shapeFor } from "./iconset";
+import { renderIconLine } from "./placement";
 import type { AutoIconHost } from "./settings";
 
 /**
  * Settings.
  *
- * Two rules here, both from the redesign:
+ * Two rules, both from the redesign:
  *
- * 1. **No icon is ever typed.** Icons are chosen from a rendered grid, styles from a dropdown that
- *    labels each weight in Chinese. The only free-text fields left are a folder path, a category's
- *    display name and its keywords — things that genuinely have no fixed vocabulary.
- * 2. **The icon style is one global setting**, not per category. Restyling the vault is then one
- *    dropdown instead of 32 edits, and "换样式" stays a distinct verb from "重新分类".
+ * 1. **No icon is ever typed.** Icons come from an mXn picker that renders them; the only free-text
+ *    fields left are a folder path, a category's display name and its keywords.
+ * 2. **The built-in list stays readable at 32 rows.** Each category is one compact line — icon, name,
+ *    one chevron — and everything else (icon choice, keywords, delete, restore) lives in a modal
+ *    opened from that line. A settings row that carries four controls is what turned the list into a
+ *    wall; a row that carries one is not.
  */
 
 class FolderSuggest extends FuzzySuggestModal<string> {
@@ -87,7 +88,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("怎么开始")
-      .setDesc("一句话：运行命令「为当前笔记添加图标」，图标会出现在笔记开头。")
+      .setDesc("一句话：运行命令「为当前笔记分配图标」，图标会出现在左侧文件树里。笔记文件本身不会被修改。")
       .addButton((b) =>
         b.setButtonText("再提示一次").onClick(async () => {
           this.plugin.showActivationHint();
@@ -108,62 +109,28 @@ export class IconSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("图标样式")
       .setDesc(
-        "切换样式是全库生效的。想让已写好的笔记也换样式，改完运行命令「把全库图标换成当前样式」——" +
-          "它只换外观，不重新分类。"
+        "「线性」对应 mdi 的 -outline 图标，「填充」对应基础图标。mdi 只对一部分图标提供线性版本，" +
+          "缺失时会自动回退并保持可用。"
       )
       .addDropdown((d) => {
-        for (const theme of THEMES) d.addOption(theme.name, theme.label);
-        d.setValue(settings.iconTheme).onChange(async (value) => {
-          settings.iconTheme = value as IconThemeName;
-          settings.accentColor = value === "outline" || value === "filled" ? settings.accentColor : value;
+        d.addOption("filled", "填充");
+        d.addOption("outline", "线性");
+        d.setValue(settings.iconStyle).onChange(async (value) => {
+          settings.iconStyle = value as "filled" | "outline";
           await this.save();
           this.refresh();
         });
       });
 
-    if (settings.iconTheme === "two-tone" || settings.iconTheme === "multi-color") {
-      new Setting(containerEl)
-        .setName("强调色")
-        .setDesc("双色和多彩样式里非文字部分的颜色。")
-        .addText((t) =>
-          t.setPlaceholder("#2f88ff").setValue(settings.accentColor).onChange(async (value) => {
-            const trimmed = value.trim();
-            if (!/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return;
-            settings.accentColor = trimmed;
-            await this.save();
-          })
-        );
-    }
-
     new Setting(containerEl)
       .setName("图标大小")
-      .setDesc("图标在笔记里显示的高度（像素）。")
+      .setDesc("在文件树里显示的大小（像素）。")
       .addSlider((s) =>
-        s
-          .setLimits(12, 48, 1)
-          .setDynamicTooltip()
-          .setValue(settings.iconSize)
-          .onChange(async (value) => {
-            settings.iconSize = value;
-            await this.save();
-          })
+        s.setLimits(12, 32, 1).setDynamicTooltip().setValue(settings.iconSize).onChange(async (value) => {
+          settings.iconSize = value;
+          await this.save();
+        })
       );
-
-    // Live preview at the current theme and size.
-    const first = settings.categories[0];
-    const set = loadedIconSet();
-    if (first && set) {
-      const shape = shapeFor(set, first.icon, settings.iconTheme);
-      const preview = new Setting(containerEl)
-        .setName("预览")
-        .setDesc(`${first.name} 在「${themeByName(settings.iconTheme, settings.accentColor).label}」样式下的样子`)
-        .setClass("ai-preview-row");
-      if (shape) {
-        preview.infoEl
-          .createSpan({ cls: "ai-icon-preview" })
-          .appendChild(fragment(renderIconLine(shape, first.icon, settings.iconTheme, settings.iconSize)));
-      }
-    }
   }
 
   private renderScope(containerEl: HTMLElement): void {
@@ -205,41 +172,36 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("最低匹配分数")
-      .setDesc("低于这个分数就不写图标。这是防止给每篇笔记乱贴图标的主要闸门。")
+      .setDesc("低于这个分数就不分配图标。这是防止给每篇笔记乱贴图标的主要闸门。")
       .addSlider((s) =>
-        s
-          .setLimits(1, 60, 1)
-          .setDynamicTooltip()
-          .setValue(settings.minScore)
-          .onChange(async (value) => {
-            settings.minScore = value;
-            await this.save();
-          })
+        s.setLimits(1, 60, 1).setDynamicTooltip().setValue(settings.minScore).onChange(async (value) => {
+          settings.minScore = value;
+          await this.save();
+        })
       );
 
     new Setting(containerEl).setName("各信号权重").setDesc("本地规则的计分权重。哪个更可信就调高哪个。");
 
     for (const [key, label] of WEIGHT_ROWS) {
-      new Setting(containerEl).setName(label).addSlider((s) =>
-        s
-          .setLimits(0, 120, 1)
-          .setDynamicTooltip()
-          .setValue(settings.weights[key])
-          .onChange(async (value) => {
+      new Setting(containerEl)
+        .setName(label)
+        .setClass("ai-compact")
+        .addSlider((s) =>
+          s.setLimits(0, 120, 1).setDynamicTooltip().setValue(settings.weights[key]).onChange(async (value) => {
             settings.weights[key] = value;
             await this.save();
           })
-      );
+        );
     }
   }
 
   private renderBehaviour(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName("写入行为").setHeading();
+    new Setting(containerEl).setName("行为").setHeading();
     const settings = this.plugin.settings;
 
     new Setting(containerEl)
-      .setName("写入前先预览")
-      .setDesc("先列出将改动哪些文件、判定依据是什么，确认后再写入。建议保持开启。")
+      .setName("分配前先预览")
+      .setDesc("先列出将给哪些笔记分配图标、判定依据是什么，确认后再保存。建议保持开启。")
       .addToggle((t) =>
         t.setValue(settings.previewBeforeWrite).onChange(async (value) => {
           settings.previewBeforeWrite = value;
@@ -249,7 +211,7 @@ export class IconSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("覆盖已有图标")
-      .setDesc("关闭时只给还没有图标的笔记添加 —— 你手动改过的图标不会被自动替换。")
+      .setDesc("关闭时只给还没有图标的笔记分配 —— 你手动改过的图标不会被自动替换。")
       .addToggle((t) =>
         t.setValue(settings.overwriteExisting).onChange(async (value) => {
           settings.overwriteExisting = value;
@@ -318,19 +280,63 @@ export class IconSettingsTab extends PluginSettingTab {
       );
   }
 
+  /* ---------------------------------------------------------------- *
+   * Categories — one compact line each, everything else behind a modal
+   * ---------------------------------------------------------------- */
+
   private renderCategories(containerEl: HTMLElement): void {
     const settings = this.plugin.settings;
     new Setting(containerEl).setName(`类别（${settings.categories.length}/${CATEGORY_LIMIT}）`).setHeading();
 
+    const builtinIds = new Set(DEFAULT_CATEGORIES.map((c) => c.id));
+    const builtin = settings.categories.filter((c) => builtinIds.has(c.id));
+    const custom = settings.categories.filter((c) => !builtinIds.has(c.id));
+
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "点任意一行可更换图标、编辑关键词。内置类别在前，自定义类别在后。",
+    });
+
+    const list = containerEl.createDiv({ cls: "ai-cat-list" });
+    for (const category of builtin) this.renderCategoryLine(list, category, false);
+    if (custom.length > 0) {
+      list.createDiv({ cls: "ai-cat-divider", text: "自定义" });
+      for (const category of custom) this.renderCategoryLine(list, category, true);
+    }
+
+    this.renderAddCategory(containerEl);
+  }
+
+  /**
+   * One category as a single clickable line.
+   *
+   * Compact on purpose: at 32 rows the alternative — a full `Setting` per category with a text
+   * field and several buttons — is what made this list unreadable.
+   */
+  private renderCategoryLine(parent: HTMLElement, category: Category, isCustom: boolean): void {
+    const row = parent.createDiv({ cls: "ai-cat" + (isCustom ? " is-custom" : "") });
+    row.createSpan({ cls: "ai-cat-name", text: category.name });
+    row.createSpan({ cls: "ai-cat-id", text: category.id });
+    row.createSpan({ cls: "ai-cat-icon", text: category.icon });
+    if (category.keywords.length > 0) {
+      row.createSpan({ cls: "ai-cat-kwcount", text: `${category.keywords.length} 词` });
+    }
+
+    const edit = row.createEl("button", { cls: "ai-cat-edit", attr: { "aria-label": `编辑 ${category.name}` } });
+    edit.setText("编辑");
+    edit.addEventListener("click", () => {
+      void new CategoryEditorModal(this.plugin, category, isCustom, () => this.refresh()).open();
+    });
+  }
+
+  private renderAddCategory(containerEl: HTMLElement): void {
+    const settings = this.plugin.settings;
     let idField = "";
     let nameField = "";
 
     new Setting(containerEl)
       .setName("新增类别")
-      .setDesc(
-        `还剩 ${Math.max(0, this.plugin.remainingCategorySlots)} 个名额，总上限 ${CATEGORY_LIMIT}。` +
-          "新类别默认用星形图标，添加后点「换图标」挑一个。"
-      )
+      .setDesc(`还剩 ${Math.max(0, this.plugin.remainingCategorySlots)} 个名额，总上限 ${CATEGORY_LIMIT}。`)
       .addText((t) =>
         t.setPlaceholder("类别 id（英文）").onChange((v) => {
           idField = v.trim();
@@ -355,131 +361,136 @@ export class IconSettingsTab extends PluginSettingTab {
             new Notice(`Auto Icon：类别 id "${idField}" 已存在。`);
             return;
           }
-          const category: Category = {
+          settings.categories.push({
             id: idField,
             name: nameField,
             description: "自定义类别",
             icon: "star",
             keywords: [],
-          };
-          settings.categories.push(category);
+          });
           await this.save();
           this.refresh();
         })
       );
-
-    // Built-in categories first, then the user's own. They are rendered in two blocks so the
-    // built-ins read as a fixed vocabulary and additions read as deliberate departures from it —
-    // otherwise a custom category looks like a typo in the default set.
-    const builtinIds = new Set(DEFAULT_CATEGORIES.map((c) => c.id));
-    const builtin = settings.categories.filter((c) => builtinIds.has(c.id));
-    const custom = settings.categories.filter((c) => !builtinIds.has(c.id));
-
-    containerEl.createEl("h4", { cls: "ai-subhead", text: `内置类别（${builtin.length}）` });
-    for (const category of builtin) this.renderCategoryRow(containerEl, category, false);
-
-    if (custom.length > 0) {
-      containerEl.createEl("h4", {
-        cls: "ai-subhead",
-        text: `自定义类别（${custom.length}）`,
-      });
-      for (const category of custom) this.renderCategoryRow(containerEl, category, true);
-    }
   }
+}
 
-  /**
-   * One category row.
-   *
-   * Kept to two controls — icon picker and a delete button. Keywords live behind a details panel
-   * because they are the only thing here worth editing rarely, and putting a text field plus three
-   * buttons on every one of 32 rows is what made the list sprawl vertically.
-   */
-  private renderCategoryRow(
-    containerEl: HTMLElement,
-    category: Category,
-    isCustom: boolean
-  ): void {
-    const settings = this.plugin.settings;
-    const set = loadedIconSet();
-    const shape = set ? shapeFor(set, category.icon, settings.iconTheme) : null;
+/** Everything about one category, edited in a modal rather than inline. */
+class CategoryEditorModal {
+  constructor(
+    private readonly plugin: AutoIconHost,
+    private readonly category: Category,
+    private readonly isCustom: boolean,
+    private readonly onClose: () => void
+  ) {}
 
-    const row = new Setting(containerEl)
-      .setClass("ai-cat-row")
-      .setName(category.name)
-      .setDesc(isCustom ? `id: ${category.id}` : `${category.description} · id: ${category.id}`);
+  async open(): Promise<void> {
+    const { App, Modal } = await import("obsidian");
+    const app = this.plugin.app;
 
-    if (shape) {
-      row.infoEl
-        .createSpan({ cls: "ai-icon-preview" })
-        .appendChild(fragment(renderIconLine(shape, category.icon, settings.iconTheme, settings.iconSize)));
-    }
+    class Editor extends Modal {
+      constructor(app: App, private readonly host: CategoryEditorModal) {
+        super(app);
+      }
 
-    row.addButton((b) =>
-      b
-        .setButtonText("换图标")
-        .setIcon("palette")
-        .onClick(async () => {
-          await this.plugin.pickIconForCategory(category.id);
-          this.refresh();
-        })
-    );
+      onOpen(): void {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h3", { text: `编辑类别 · ${this.host.category.name}` });
 
-    if (!isCustom) {
-      row.addButton((b) =>
-        b
-          .setButtonText("恢复默认")
-          .setIcon("rotate-ccw")
-          .onClick(async () => {
-            const original = cloneCategory(category.id);
-            if (!original) return;
-            category.icon = original.icon;
-            category.keywords = [...original.keywords];
-            await this.save();
-            this.refresh();
+        const row = new Setting(contentEl).setName("图标");
+        const set = this.host.plugin.iconSetMeta;
+        const resolved = set ? shapeFor(set, this.host.category.icon, this.host.plugin.settings.iconStyle) : null;
+        const preview = row.infoEl.createSpan({ cls: "ai-icon-preview" });
+        if (resolved) {
+          preview.innerHTML = renderIconLine(
+            resolved.shape,
+            resolved.name,
+            this.host.plugin.settings.iconStyle,
+            24
+          );
+        }
+        row.addButton((b) =>
+          b.setButtonText("选择图标").onClick(async () => {
+            const iconSet = await this.host.plugin.loadIconSet();
+            const chosen = await new Promise<string | null>((resolve) => {
+              new IconPickerModal(this.app, iconSet, this.host.plugin.settings.iconStyle, (v) => resolve(v)).open();
+            });
+            if (chosen) {
+              this.host.category.icon = chosen;
+              await this.host.plugin.saveSettings();
+              this.refreshPreview();
+            }
           })
-      );
+        );
+
+        new Setting(contentEl).setName("mXn 名称").setDesc("可以直接粘贴或手改，例如 folder-outline。").addText((t) =>
+          t.setPlaceholder("folder").setValue(this.host.category.icon).onChange(async (value) => {
+            this.host.category.icon = value.trim().toLowerCase();
+            await this.host.plugin.saveSettings();
+          })
+        );
+
+        new Setting(contentEl).setName("关键词").setDesc("空格分隔，用于匹配笔记。").addText((t) =>
+          t.setPlaceholder("设计 ui ux").setValue(this.host.category.keywords.join(" ")).onChange(async (value) => {
+            this.host.category.keywords = value.toLowerCase().split(/\s+/).filter(Boolean);
+            await this.host.plugin.saveSettings();
+          })
+        );
+
+        new Setting(contentEl).setName("说明").addText((t) =>
+          t.setValue(this.host.category.description).onChange(async (value) => {
+            this.host.category.description = value;
+            await this.host.plugin.saveSettings();
+          })
+        );
+
+        const buttons = contentEl.createDiv({ cls: "ai-buttons" });
+        const close = buttons.createEl("button", { text: "完成", cls: "mod-cta" });
+        close.addEventListener("click", () => {
+          this.close();
+          this.host.onClose();
+        });
+
+        if (!this.host.isCustom) {
+          const reset = buttons.createEl("button", { text: "恢复默认图标和关键词" });
+          reset.addEventListener("click", async () => {
+            const original = DEFAULT_CATEGORIES.find((c) => c.id === this.host.category.id);
+            if (!original) return;
+            this.host.category.icon = original.icon;
+            this.host.category.keywords = [...original.keywords];
+            await this.host.plugin.saveSettings();
+            this.refreshPreview();
+            new Notice(`已恢复 ${original.name} 的默认值。`);
+          });
+        }
+
+        const remove = buttons.createEl("button", { text: "删除类别", cls: "mod-warning" });
+        remove.addEventListener("click", async () => {
+          const settings = this.host.plugin.settings;
+          settings.categories = settings.categories.filter((c) => c.id !== this.host.category.id);
+          await this.host.plugin.saveSettings();
+          this.close();
+          this.host.onClose();
+        });
+      }
+
+      private async refreshPreview(): Promise<void> {
+        const span = this.contentEl.querySelector(".ai-icon-preview");
+        const set = this.host.plugin.iconSetMeta ?? (await this.host.plugin.loadIconSet());
+        const resolved = shapeFor(set, this.host.category.icon, this.host.plugin.settings.iconStyle);
+        if (span) {
+          span.innerHTML = resolved
+            ? renderIconLine(resolved.shape, resolved.name, this.host.plugin.settings.iconStyle, 24)
+            : "";
+        }
+      }
+
+      onClose(): void {
+        this.contentEl.empty();
+      }
     }
 
-    row.addButton((b) =>
-      b
-        .setButtonText("删除")
-        .setIcon("trash-2")
-        .setWarning()
-        .onClick(async () => {
-          settings.categories = settings.categories.filter((c) => c.id !== category.id);
-          await this.save();
-          this.refresh();
-        })
-    );
-
-    // Keywords behind a disclosure: present and editable, but not 32 rows of noise.
-    const details = row.controlEl.createEl("details", { cls: "ai-cat-details" });
-    const summary = details.createEl("summary", { cls: "ai-cat-summary" });
-    summary.createSpan({ text: category.keywords.length > 0 ? `关键词 · ${category.keywords.length} 个` : "关键词" });
-    summary.createSpan({ cls: "ai-cat-kws", text: category.keywords.slice(0, 8).join(" · ") });
-
-    new Setting(details).setClass("ai-cat-kw-row").addText((t) =>
-      t
-        .setPlaceholder("关键词，空格分隔，例如：设计 ui ux")
-        .setValue(category.keywords.join(" "))
-        .onChange(async (value) => {
-          category.keywords = value.toLowerCase().split(/\s+/).filter(Boolean);
-          await this.save();
-        })
-    );
+    new Editor(app, this).open();
   }
-}
-
-function fragment(html: string): DocumentFragment {
-  const holder = document.createElement("div");
-  holder.innerHTML = html;
-  const node = document.createDocumentFragment();
-  while (holder.firstChild) node.appendChild(holder.firstChild);
-  return node;
-}
-
-/** Default icon + keywords for a shipped category, or `null` for a user-created one. */
-function cloneCategory(id: string): Category | null {
-  const found = DEFAULT_CATEGORIES.find((c) => c.id === id);
-  return found ? { ...found, keywords: [...found.keywords] } : null;
 }

@@ -9,7 +9,7 @@ import path from "path";
 import { hasIcon, type IconSetMeta } from "../src/iconset";
 
 const SET = JSON.parse(
-  readFileSync(path.join(__dirname, "..", "icons", "iconpark.json"), "utf8")
+  readFileSync(path.join(__dirname, "..", "icons", "mdi.json"), "utf8")
 ) as IconSetMeta;
 
 describe("the 32 categories", () => {
@@ -23,9 +23,9 @@ describe("the 32 categories", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("gives every category an icon that exists in the shipped set", () => {
-    // The strongest possible check: against the real generated set, so a name that was renamed or
-    // mistyped upstream cannot ship as a silently blank icon.
+  it("gives every category an mXn name that exists in the shipped set", () => {
+    // Against the real generated set, so an mXn name that was mistyped upstream cannot ship as a
+    // silently blank icon.
     const missing = DEFAULT_CATEGORIES.filter((c) => !hasIcon(SET, c.icon)).map((c) => c.id);
     expect(missing).toEqual([]);
   });

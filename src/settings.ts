@@ -3,23 +3,23 @@ import type { AiConfig } from "./ai";
 import { DEFAULT_AI_CONFIG } from "./ai";
 import type { Category } from "./categories";
 import type { SignalWeights } from "./classifier";
-import { DEFAULT_ACCENT, type IconThemeName } from "./placement";
+import type { IconStyle } from "./placement";
 
 /**
  * Plugin settings.
  *
- * Note what is *not* here any more: a free-text icon reference field. The previous version let a
- * user type `lucide:folder-kanban` by hand, which is a typo waiting to happen and gives no way to
- * see the icon before committing to it. Icon and style are now both pickers, and the only string a
- * user can type is a category's keywords.
+ * Two things are deliberately absent. There is no frontmatter key: notes are never modified, so the
+ * assignment lives in `icons` here. And there is no free-text icon field — the previous version let
+ * a user type `lucide:folder-kanban` by hand, which is a typo waiting to happen and gives no way to
+ * see the icon before committing. Icons are chosen from a rendered mXn picker.
  */
 
 export interface AutoIconSettings {
   categories: Category[];
-  /** Which IconPark theme to paint with. Themes are colour mappings, so all four ship together. */
-  iconTheme: IconThemeName;
-  /** Secondary colour used by the two-tone and multi-colour themes. */
-  accentColor: string;
+  /** Filled or outline. In mXn these are paired names, so both ship together. */
+  iconStyle: IconStyle;
+  /** Note path -> icon assignment. The plugin's whole persisted state; notes are never modified. */
+  icons: Record<string, { categoryId: string; icon: string; style: string; size: number }>;
   /** Rendered icon height in pixels. */
   iconSize: number;
   /** Overwrite an icon that is already at the top of a note. */
@@ -39,9 +39,9 @@ export interface AutoIconSettings {
 
 export const DEFAULT_SETTINGS: AutoIconSettings = {
   categories: [],
-  iconTheme: "outline",
-  accentColor: DEFAULT_ACCENT,
-  iconSize: 20,
+  iconStyle: "filled",
+  iconSize: 16,
+  icons: {},
   overwriteExisting: false,
   scopeFolder: "",
   includeSubfolders: true,
@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: AutoIconSettings = {
 
 /** The one sentence the user is shown to turn auto-icon on. */
 export const ACTIVATION_HINT =
-  "Auto Icon 已就绪 —— 运行命令「为当前笔记添加图标」，图标会出现在笔记开头。";
+  "Auto Icon 已就绪 —— 运行命令「为当前笔记分配图标」，图标会出现在左侧文件树里。";
 
 /** Settings as stored, filling in anything an older or newer `data.json` is missing. */
 export function withDefaults(raw: unknown): AutoIconSettings {
@@ -88,6 +88,7 @@ export interface AutoIconHost extends Plugin {
   showActivationHint(): void;
   readonly remainingCategorySlots: number;
   loadIconSet(): Promise<import("./iconset").IconSetMeta>;
+  readonly iconSetMeta: import("./iconset").IconSetMeta | null;
   pickIconForCategory(categoryId: string): Promise<void>;
   clearCurrentNoteIcon(): Promise<void>;
 }

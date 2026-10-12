@@ -1,11 +1,11 @@
 {
   "name": "obsidian-auto-icon",
   "version": "0.1.0",
-  "description": "Put an icon at the top of each note, chosen from its content.",
+  "description": "Give each note an icon in the file explorer, chosen from its content. Notes are never modified.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "icons": "node scripts/build-iconpark.mjs",
+    "icons": "node scripts/build-mdi.mjs",
     "build": "npm run icons && tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "test": "jest --passWithNoTests",
@@ -22,7 +22,7 @@
   "author": "rosswang",
   "license": "MIT",
   "devDependencies": {
-    "@icon-park/svg": "^1.4.2",
+    "@mdi/svg": "^7.4.47",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",

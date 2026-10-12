@@ -1,15 +1,17 @@
 import { App, Modal } from "obsidian";
+import { shapeFor } from "./iconset";
+import { styleLabel, type IconStyle } from "./placement";
 import type { ScanPlan } from "./planner";
-import { renderIconLine, THEMES } from "./placement";
-import type { IconThemeName } from "./placement";
 
 /**
- * Preview of proposed icon changes.
+ * Preview of proposed icon assignments.
  *
- * Shows the actual rendered icon next to each note, plus *why* it was chosen — because the single
- * most likely complaint about an auto-tagging plugin is "why did it think this was a meeting?", and
- * the honest answer is usually a tag the user forgot was there. Showing the evidence makes that
- * answerable without reading the plugin's source.
+ * Each row shows the icon **as it will look in the file tree**, next to the note path and the reason
+ * it was chosen. The reasons matter most: the default complaint about an auto-tagging plugin is
+ * "why did it think this was a meeting?", and the honest answer is usually a tag the user forgot was
+ * there. Showing it makes that answerable without reading the plugin.
+ *
+ * Nothing is saved until this is accepted.
  */
 
 export interface PreviewRequest {
@@ -18,14 +20,11 @@ export interface PreviewRequest {
   readonly matched: number;
   readonly considered: number;
   readonly aiEnabled: boolean;
-  readonly theme: IconThemeName;
+  readonly iconSet: import("./iconset").IconSetMeta | null;
+  readonly iconStyle: IconStyle;
 }
 
 const MAX_RENDERED = 300;
-
-function themeLabel(name: IconThemeName): string {
-  return THEMES.find((t) => t.name === name)?.label ?? name;
-}
 
 export class PreviewModal extends Modal {
   private readonly request: PreviewRequest;
@@ -40,18 +39,18 @@ export class PreviewModal extends Modal {
   onOpen(): void {
     const { plan } = this.request;
     const { contentEl } = this;
-    this.titleEl.setText("Auto Icon — 即将写入的图标");
+    this.titleEl.setText("Auto Icon — 即将分配的图标");
 
     const assign = plan.changes.filter((c) => c.action === "assign").length;
     const rest = plan.changes.length - assign;
 
     contentEl.createEl("p", {
       cls: "ai-summary",
-      text: `将修改 ${plan.changes.length} 个文件（新增 ${assign} · 更新 ${rest}） · 样式：${themeLabel(this.request.theme)} · 范围：${this.request.scopeDescription}`,
+      text: `将给 ${plan.changes.length} 个笔记分配图标（新增 ${assign} · 更新 ${rest}） · 样式：${styleLabel(this.request.iconStyle)} · 范围：${this.request.scopeDescription}`,
     });
     contentEl.createEl("p", {
       cls: "ai-muted",
-      text: `扫描 ${this.request.considered} 个笔记，命中 ${this.request.matched} 个；${plan.unchanged} 个保持不变，${plan.unmatched} 个未匹配到类别（不会写入，也不会清除已有图标）。`,
+      text: `扫描 ${this.request.considered} 个笔记，命中 ${this.request.matched} 个；${plan.unchanged} 个保持不变，${plan.unmatched} 个未匹配到类别（不会分配，也不会清除已有图标）。笔记文件本身不会被修改。`,
     });
 
     if (this.request.aiEnabled) {
@@ -65,10 +64,7 @@ export class PreviewModal extends Modal {
     const shown = plan.changes.slice(0, MAX_RENDERED);
     for (const change of shown) this.renderRow(list, change);
     if (plan.changes.length > shown.length) {
-      list.createEl("p", {
-        cls: "ai-muted",
-        text: `… 另有 ${plan.changes.length - shown.length} 个文件未列出。`,
-      });
+      list.createEl("p", { cls: "ai-muted", text: `… 另有 ${plan.changes.length - shown.length} 个笔记未列出。` });
     }
 
     const buttons = contentEl.createDiv({ cls: "ai-buttons" });
@@ -76,7 +72,7 @@ export class PreviewModal extends Modal {
     cancel.addEventListener("click", () => this.close());
 
     const apply = buttons.createEl("button", {
-      text: plan.changes.length === 0 ? "关闭" : `写入 ${plan.changes.length} 个文件`,
+      text: plan.changes.length === 0 ? "关闭" : `分配 ${plan.changes.length} 个图标`,
       cls: "mod-cta",
     });
     apply.addEventListener("click", () => {
@@ -89,15 +85,14 @@ export class PreviewModal extends Modal {
   private renderRow(parent: HTMLElement, change: ScanPlan["changes"][number]): void {
     const row = parent.createDiv({ cls: "ai-row" });
 
-    const head = row.createDiv({ cls: "ai-row-head" });
-    if (change.shape) {
-      head.createDiv({ cls: "ai-icon-preview" }).innerHTML = renderIconLine(
-        change.shape,
-        change.after ?? "",
-        change.theme,
-        change.size
-      );
+    const set = this.request.iconSet;
+    const resolved = set ? shapeFor(set, change.after, change.style) : null;
+    if (resolved) {
+      row.createSpan({ cls: "ai-row-icon" }).innerHTML =
+        `<svg viewBox="${resolved.shape.viewBox}" width="18" height="18" fill="currentColor"><path d="${resolved.shape.d}"/></svg>`;
     }
+
+    const head = row.createDiv({ cls: "ai-row-head" });
     head.createSpan({ cls: "ai-path", text: change.path });
     if (change.before && change.action === "replace") {
       head.createSpan({ cls: "ai-was", text: `原 ${change.before}` });

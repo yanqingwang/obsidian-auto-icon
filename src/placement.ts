@@ -9,7 +9,7 @@
  * So the icon now lives at the top of the note body as a single self-describing line:
  *
  * ```html
- * <svg class="auto-icon" data-icon="folder" data-theme="outline" …><path …/></svg>
+ * <svg class="auto-icon" data-icon="folder" data-style="outline" …><path …/></svg>
  *
  * # 项目说明
  * ```
@@ -17,7 +17,7 @@
  * Three properties this shape buys:
  *
  * - **Visible.** Obsidian renders inline HTML in reading view; a stylesheet handles edit mode.
- * - **Reversible.** `data-icon` / `data-theme` carry the identity, so a re-run replaces rather than
+ * - **Reversible.** `data-icon` / `data-style` carry the identity, so a re-run replaces rather than
  *   appends, and detection never has to re-parse path data.
  * - **Non-destructive.** Everything outside that one line is untouched, and the blank line after it
  *   keeps the markdown beneath from being swallowed by the HTML block.
@@ -27,69 +27,32 @@
 
 export const ICON_CLASS = "auto-icon";
 
-export type IconThemeName = "outline" | "filled" | "two-tone" | "multi-color";
-
 /**
- * A theme is four colours, one per IconPark palette slot.
- *
- * These are the plugin's own values rather than IconPark's defaults (`#333`, `#FFF`, `#2F88FF`):
- * an icon sitting in a note has to inherit the note's text colour, so slot 0 is `currentColor` and
- * the fill slots are `none`. A hard-coded `#333` would be invisible on a dark theme.
+ * mdi ships filled and outline as *paired names* — `folder` and `folder-outline` — rather than as
+ * two weights of one asset. So the style is a naming convention, and the icon is stored under the
+ * mXn name the user picked, not under a resolved variant.
  */
-export interface IconTheme {
-  readonly name: IconThemeName;
-  readonly label: string;
-  /** Slot 0 primary stroke, 1 secondary fill, 2 inner stroke, 3 inner fill. */
-  readonly colors: readonly [string, string, string, string];
+export type IconStyle = "filled" | "outline";
+
+export const ICON_STYLES: readonly IconStyle[] = ["filled", "outline"];
+
+export const STYLE_LABELS: Record<IconStyle, string> = {
+  filled: "填充",
+  outline: "线性",
+};
+
+export function isIconStyle(value: string): value is IconStyle {
+  return ICON_STYLES.includes(value as IconStyle);
 }
 
-export const DEFAULT_ACCENT = "#2f88ff";
-
-export const THEMES: readonly IconTheme[] = [
-  {
-    name: "outline",
-    label: "线性",
-    colors: ["currentColor", "none", "currentColor", "none"],
-  },
-  {
-    name: "filled",
-    label: "填充",
-    colors: ["currentColor", "currentColor", "none", "none"],
-  },
-  {
-    name: "two-tone",
-    label: "双色",
-    colors: ["currentColor", DEFAULT_ACCENT, "currentColor", DEFAULT_ACCENT],
-  },
-  {
-    name: "multi-color",
-    label: "多彩",
-    colors: ["currentColor", DEFAULT_ACCENT, DEFAULT_ACCENT, "#43ccf8"],
-  },
-];
-
-export function isThemeName(name: string): name is IconThemeName {
-  return THEMES.some((t) => t.name === name);
+export function styleLabel(name: string): string {
+  return STYLE_LABELS[name as IconStyle] ?? name;
 }
 
-export function themeByName(name: string, accent: string = DEFAULT_ACCENT): IconTheme {
-  const found = THEMES.find((t) => t.name === name);
-  if (!found) return THEMES[0];
-  if (name === "outline" || name === "filled") return found;
-  // Only the accent themes carry a colour, so only they need rebuilding for a new accent. Tuple type
-  // is preserved explicitly because `map` widens a 4-tuple to a plain array.
-  const colors = found.colors.map((c) => (c === DEFAULT_ACCENT ? accent : c));
-  return { ...found, colors: [colors[0], colors[1], colors[2], colors[3]] };
-}
-
-/** A resolved, themed icon: a viewBox plus inner SVG markup with real colours already applied. */
+/** A resolved icon: viewBox plus path data, ready to render. */
 export interface IconShape {
   readonly viewBox: string;
-  readonly body: string;
-  /** Attributes hoisted off every path onto the root <svg>, since they inherit. */
-  readonly stroke: number;
-  readonly strokeLinecap: string;
-  readonly strokeLinejoin: string;
+  readonly d: string;
 }
 
 /**
@@ -122,28 +85,26 @@ function unescapeAttr(value: string): string {
 export function renderIconLine(
   shape: IconShape,
   icon: string,
-  theme: IconThemeName,
+  style: IconStyle,
   size: number
 ): string {
   const attrs = [
     `class="${ICON_CLASS}"`,
     `data-icon="${escapeAttr(icon)}"`,
-    `data-theme="${escapeAttr(theme)}"`,
+    `data-style="${escapeAttr(style)}"`,
     `width="${size}"`,
     `height="${size}"`,
     `viewBox="${escapeAttr(shape.viewBox)}"`,
-    `fill="none"`,
-    `stroke-width="${shape.stroke}"`,
-    `stroke-linecap="${escapeAttr(shape.strokeLinecap)}"`,
-    `stroke-linejoin="${escapeAttr(shape.strokeLinejoin)}"`,
+    `fill="currentColor"`,
   ].join(" ");
 
-  return `<svg ${attrs}>${shape.body}</svg>`;
+  return `<svg ${attrs}><path d="${escapeAttr(shape.d)}"/></svg>`;
 }
 
 export interface Placement {
+  /** mXn name without the `mdi:` prefix, exactly as the user chose it. */
   readonly icon: string;
-  readonly theme: IconThemeName;
+  readonly style: IconStyle;
   readonly size: number;
 }
 
@@ -157,12 +118,12 @@ export function detectIcon(body: string): Placement | null {
   const icon = ATTR_RE("data-icon").exec(text)?.[1];
   if (!icon) return null;
 
-  const theme = ATTR_RE("data-theme").exec(text)?.[1] as IconThemeName | undefined;
+  const style = ATTR_RE("data-style").exec(text)?.[1] ?? "filled";
   const height = Number(ATTR_RE("height").exec(text)?.[1]);
 
   return {
     icon: unescapeAttr(icon),
-    theme: theme ?? "outline",
+    style: isIconStyle(style) ? style : "filled",
     size: Number.isFinite(height) && height > 0 ? height : 20,
   };
 }
@@ -184,10 +145,10 @@ export function applyIcon(
   body: string,
   shape: IconShape,
   icon: string,
-  theme: IconThemeName,
+  style: IconStyle,
   size: number
 ): string {
-  const line = renderIconLine(shape, icon, theme, size);
+  const line = renderIconLine(shape, icon, style, size);
 
   if (detectIcon(body)) {
     // A blank separator line belongs to the icon, so the replacement re-emits it — otherwise
