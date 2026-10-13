@@ -25,7 +25,8 @@ import type { IconMap } from "./store";
 export const STYLE_ELEMENT_ID = "auto-icon-tree";
 
 /** Which element carries the file name inside a file-explorer row. */
-const ROW_SELECTOR = '.nav-file-title[data-path="%s"] .nav-file-title-content::before';
+const ROW_SELECTOR =
+  '.nav-file-title[data-path="%s"] .nav-file-title-content::before';
 
 /** Escape a path for use inside a double-quoted CSS attribute selector. */
 export function escapePath(path: string): string {
@@ -39,7 +40,12 @@ export function escapePath(path: string): string {
  * the path data.
  */
 export function svgDataUri(shape: IconShape): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${shape.viewBox}"><path d="${shape.d}"/></svg>`;
+  // Inheritable stroke attributes live on the root <svg>; the stored body is the inner markup with
+  // the theme's colours already substituted in.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${shape.viewBox}" fill="none" ` +
+    `stroke-width="${shape.stroke}" stroke-linecap="${shape.strokeLinecap}" ` +
+    `stroke-linejoin="${shape.strokeLinejoin}">${shape.body}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)
     .replace(/'/g, "%27")
     .replace(/"/g, "%22")
@@ -50,7 +56,7 @@ export function svgDataUri(shape: IconShape): string {
 
 export interface BuildOptions {
   /** Resolves a note's mXn name + style to drawable path data. */
-  shapeFor: (icon: string, style: string) => IconShape | null;
+  shapeFor: (icon: string, theme: string) => IconShape | null;
   /** CSS colour for the icon; defaults to the surrounding text colour. */
   color?: string;
 }
@@ -62,12 +68,15 @@ export interface BuildOptions {
  * count is returned so the caller can tell the user rather than leave them wondering why one note
  * has no icon.
  */
-export function buildCss(map: IconMap, opts: BuildOptions): { css: string; skipped: string[] } {
+export function buildCss(
+  map: IconMap,
+  opts: BuildOptions,
+): { css: string; skipped: string[] } {
   const skipped: string[] = [];
   const rules: string[] = [];
 
   for (const [path, assignment] of Object.entries(map)) {
-    const shape = opts.shapeFor(assignment.icon, assignment.style);
+    const shape = opts.shapeFor(assignment.icon, assignment.theme);
     if (!shape) {
       skipped.push(path);
       continue;
@@ -80,7 +89,7 @@ export function buildCss(map: IconMap, opts: BuildOptions): { css: string; skipp
         `display:inline-block;vertical-align:-0.2em;` +
         `margin-inline-end:0.35em;` +
         (opts.color ? `color:${opts.color};` : "") +
-        `}`
+        `}`,
     );
   }
 

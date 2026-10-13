@@ -68,12 +68,17 @@ class PluginSettingTab {
   display() {}
 }
 
+/** Records every Notice the plugin raised, so tests can assert the user was actually told. */
+const notices = [];
+
 class Notice {
   constructor(message) {
     this.message = message;
+    notices.push(message);
   }
   setMessage(message) {
     this.message = message;
+    notices[notices.length - 1] = message;
   }
   hide() {}
 }
@@ -158,4 +163,5 @@ module.exports = {
   TFolder,
   setIcon,
   normalizePath,
+  notices,
 };

@@ -28,31 +28,43 @@
 export const ICON_CLASS = "auto-icon";
 
 /**
- * mdi ships filled and outline as *paired names* — `folder` and `folder-outline` — rather than as
- * two weights of one asset. So the style is a naming convention, and the icon is stored under the
- * mXn name the user picked, not under a resolved variant.
+ * IconPark's themes are four colour mappings over one static drawing, not four variants of it.
+ * So a theme is a choice of colours rather than a choice of asset, and every stored icon supports
+ * all four at no extra cost.
  */
-export type IconStyle = "filled" | "outline";
+export type IconThemeName = "outline" | "filled" | "two-tone" | "duotone";
 
-export const ICON_STYLES: readonly IconStyle[] = ["filled", "outline"];
+export const ICON_THEMES: readonly IconThemeName[] = [
+  "outline",
+  "filled",
+  "two-tone",
+  "duotone",
+];
 
-export const STYLE_LABELS: Record<IconStyle, string> = {
-  filled: "填充",
+export function isIconTheme(value: string): value is IconThemeName {
+  return ICON_THEMES.includes(value as IconThemeName);
+}
+
+export function themeLabel(name: string): string {
+  return THEME_LABELS[name as IconThemeName] ?? name;
+}
+
+/** Kept here so the picker and the settings page agree without importing the icon set. */
+export const THEME_LABELS: Record<IconThemeName, string> = {
   outline: "线性",
+  filled: "填充",
+  "two-tone": "双色",
+  duotone: "多彩",
 };
 
-export function isIconStyle(value: string): value is IconStyle {
-  return ICON_STYLES.includes(value as IconStyle);
-}
-
-export function styleLabel(name: string): string {
-  return STYLE_LABELS[name as IconStyle] ?? name;
-}
-
-/** A resolved icon: viewBox plus path data, ready to render. */
+/** A resolved icon: inner markup with real colours already applied. */
 export interface IconShape {
   readonly viewBox: string;
-  readonly d: string;
+  readonly body: string;
+  /** Hoisted off every path onto the root <svg>, since these attributes inherit. */
+  readonly stroke: number;
+  readonly strokeLinecap: string;
+  readonly strokeLinejoin: string;
 }
 
 /**
@@ -74,37 +86,47 @@ const ICON_LINE_RE =
 const ATTR_RE = (name: string): RegExp => new RegExp(`\\b${name}="([^"]*)"`);
 
 function escapeAttr(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 function unescapeAttr(value: string): string {
-  return value.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 /** Build the one-line SVG that goes at the top of the note. */
 export function renderIconLine(
   shape: IconShape,
   icon: string,
-  style: IconStyle,
-  size: number
+  theme: IconThemeName,
+  size: number,
 ): string {
   const attrs = [
     `class="${ICON_CLASS}"`,
     `data-icon="${escapeAttr(icon)}"`,
-    `data-style="${escapeAttr(style)}"`,
+    `data-theme="${escapeAttr(theme)}"`,
     `width="${size}"`,
     `height="${size}"`,
     `viewBox="${escapeAttr(shape.viewBox)}"`,
-    `fill="currentColor"`,
+    `fill="none"`,
+    `stroke-width="${shape.stroke}"`,
+    `stroke-linecap="${escapeAttr(shape.strokeLinecap)}"`,
+    `stroke-linejoin="${escapeAttr(shape.strokeLinejoin)}"`,
   ].join(" ");
 
-  return `<svg ${attrs}><path d="${escapeAttr(shape.d)}"/></svg>`;
+  return `<svg ${attrs}>${shape.body}</svg>`;
 }
 
 export interface Placement {
-  /** mXn name without the `mdi:` prefix, exactly as the user chose it. */
+  /** IconPark name without the `icon-park:` prefix, exactly as the user chose it. */
   readonly icon: string;
-  readonly style: IconStyle;
+  readonly theme: IconThemeName;
   readonly size: number;
 }
 
@@ -118,12 +140,12 @@ export function detectIcon(body: string): Placement | null {
   const icon = ATTR_RE("data-icon").exec(text)?.[1];
   if (!icon) return null;
 
-  const style = ATTR_RE("data-style").exec(text)?.[1] ?? "filled";
+  const theme = ATTR_RE("data-theme").exec(text)?.[1] ?? "outline";
   const height = Number(ATTR_RE("height").exec(text)?.[1]);
 
   return {
     icon: unescapeAttr(icon),
-    style: isIconStyle(style) ? style : "filled",
+    theme: isIconTheme(theme) ? theme : "outline",
     size: Number.isFinite(height) && height > 0 ? height : 20,
   };
 }
@@ -145,10 +167,10 @@ export function applyIcon(
   body: string,
   shape: IconShape,
   icon: string,
-  style: IconStyle,
-  size: number
+  theme: IconThemeName,
+  size: number,
 ): string {
-  const line = renderIconLine(shape, icon, style, size);
+  const line = renderIconLine(shape, icon, theme, size);
 
   if (detectIcon(body)) {
     // A blank separator line belongs to the icon, so the replacement re-emits it — otherwise

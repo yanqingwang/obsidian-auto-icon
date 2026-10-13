@@ -1,6 +1,6 @@
 import type { Classification } from "./classifier";
-import type { IconStyle } from "./placement";
-import { isManual, type IconMap } from "./store";
+import type { IconThemeName } from "./placement";
+import { isManual, type Assignment, type IconMap } from "./store";
 
 /**
  * The scan pipeline, retargeted from writing files to updating the plugin's own map.
@@ -14,11 +14,11 @@ import { isManual, type IconMap } from "./store";
 export interface ScanInput {
   readonly path: string;
   /** What this note shows now: a stored assignment, a legacy line, or nothing. */
-  readonly existing: { categoryId: string; icon: string; style: string; size: number } | null;
+  readonly existing: Assignment | null;
   readonly classification: Classification;
   readonly categoryId: string | null;
   readonly icon: string | null;
-  readonly style: IconStyle;
+  readonly theme: IconThemeName;
   readonly size: number;
 }
 
@@ -31,7 +31,7 @@ export interface IconChange {
   readonly after: string;
   readonly categoryId: string;
   readonly reasons: readonly string[];
-  readonly style: IconStyle;
+  readonly theme: IconThemeName;
   readonly size: number;
 }
 
@@ -54,7 +54,10 @@ export interface PlanOptions {
   readonly overwriteExisting: boolean;
 }
 
-export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): ScanPlan {
+export function buildPlan(
+  inputs: readonly ScanInput[],
+  options: PlanOptions,
+): ScanPlan {
   const changes: IconChange[] = [];
   const protectedManual: string[] = [];
   let unchanged = 0;
@@ -64,7 +67,7 @@ export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): S
     const wanted = input.categoryId !== null && input.icon !== null;
     const before = options.current[input.path] ?? input.existing ?? null;
     const sameIcon = before?.icon === input.icon;
-    const sameStyle = before?.style === input.style;
+    const sameTheme = before?.theme === input.theme;
     const sameSize = before?.size === input.size;
 
     // A manual pick survives even a forced rescan. The classifier getting something wrong is the
@@ -83,7 +86,7 @@ export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): S
       continue;
     }
 
-    if (sameIcon && sameStyle && sameSize) {
+    if (sameIcon && sameTheme && sameSize) {
       unchanged += 1;
       continue;
     }
@@ -100,7 +103,7 @@ export function buildPlan(inputs: readonly ScanInput[], options: PlanOptions): S
       after: input.icon as string,
       categoryId: input.categoryId as string,
       reasons: input.classification.reasons,
-      style: input.style,
+      theme: input.theme,
       size: input.size,
     });
   }

@@ -1,9 +1,10 @@
 import { Modal, Notice, Setting, type App } from "obsidian";
 import { DEFAULT_CATEGORIES, type Category } from "./categories";
 import { IconPickerModal } from "./IconPickerModal";
-import { mxnName, shapeFor } from "./iconset";
-import { isIconStyle, renderIconLine } from "./placement";
+import { collectionName, shapeFor } from "./iconset";
+import { isIconTheme, renderIconLine } from "./placement";
 import type { AutoIconHost } from "./settings";
+import { fire } from "./callbacks";
 
 /**
  * Everything about one category, edited in a modal.
@@ -22,7 +23,7 @@ export class CategoryEditorModal extends Modal {
     private readonly host: AutoIconHost,
     private readonly category: Category,
     private readonly isCustom: boolean,
-    private readonly onSaved: () => void
+    private readonly onSaved: () => void,
   ) {
     super(app);
   }
@@ -42,31 +43,44 @@ export class CategoryEditorModal extends Modal {
     const row = new Setting(containerEl).setName("图标");
 
     const preview = row.infoEl.createSpan({ cls: "ai-icon-preview" });
-    this.paintPreview(preview, settings.iconStyle, settings.iconSize);
+    this.paintPreview(preview, settings.iconTheme, settings.iconSize);
 
     row.addButton((b) =>
-      b.setButtonText("从 mXn 图标库选择…").onClick(async () => {
-        const set = await this.host.loadIconSet();
-        const chosen = await new Promise<string | null>((resolve) => {
-          new IconPickerModal(this.app, set, settings.iconStyle, (value) => resolve(value)).open();
-        });
-        if (!chosen) return;
-        this.category.icon = chosen;
-        await this.host.saveSettings();
-        this.paintPreview(preview, settings.iconStyle, settings.iconSize);
-        this.onSaved();
-      })
+      b.setButtonText("从 mXn 图标库选择…").onClick(
+        fire(async () => {
+          const set = await this.host.loadIconSet();
+          const chosen = await new Promise<string | null>((resolve) => {
+            new IconPickerModal(
+              this.app,
+              set,
+              settings.iconTheme,
+              this.category.icon,
+              (value) => resolve(value),
+            ).open();
+          });
+          if (!chosen) return;
+          this.category.icon = chosen;
+          await this.host.saveSettings();
+          this.paintPreview(preview, settings.iconTheme, settings.iconSize);
+          this.onSaved();
+        }),
+      ),
     );
   }
 
-  private paintPreview(el: HTMLElement, style: string, size: number): void {
+  private paintPreview(el: HTMLElement, theme: string, size: number): void {
     const set = this.host.iconSetMeta ?? this.host.set;
-    const iconStyle = isIconStyle(style) ? style : "filled";
-    const resolved = set ? shapeFor(set, this.category.icon, iconStyle) : null;
+    const iconTheme = isIconTheme(theme) ? theme : "outline";
+    const resolved = set ? shapeFor(set, this.category.icon, iconTheme) : null;
     el.innerHTML = resolved
-      ? renderIconLine(resolved.shape, resolved.name, iconStyle, size)
+      ? renderIconLine(resolved, this.category.icon, iconTheme, size)
       : "";
-    el.setAttribute("title", this.host.iconSetMeta ? mxnName(this.host.iconSetMeta, this.category.icon) : "");
+    el.setAttribute(
+      "title",
+      this.host.iconSetMeta
+        ? collectionName(this.host.iconSetMeta, this.category.icon)
+        : "",
+    );
   }
 
   private renderTextFields(containerEl: HTMLElement): void {
@@ -74,27 +88,42 @@ export class CategoryEditorModal extends Modal {
       .setName("mXn 名称")
       .setDesc("可以直接粘贴或手改，例如 folder-outline。")
       .addText((t) =>
-        t.setPlaceholder("folder").setValue(this.category.icon).onChange(async (value) => {
-          this.category.icon = value.trim().toLowerCase();
-          await this.host.saveSettings();
-        })
+        t
+          .setPlaceholder("folder")
+          .setValue(this.category.icon)
+          .onChange(
+            fire(async (value) => {
+              this.category.icon = value.trim().toLowerCase();
+              await this.host.saveSettings();
+            }),
+          ),
       );
 
     new Setting(containerEl)
       .setName("关键词")
       .setDesc("空格分隔，用于匹配笔记内容、标题和文件夹。")
       .addText((t) =>
-        t.setPlaceholder("设计 ui ux").setValue(this.category.keywords.join(" ")).onChange(async (value) => {
-          this.category.keywords = value.toLowerCase().split(/\s+/).filter(Boolean);
-          await this.host.saveSettings();
-        })
+        t
+          .setPlaceholder("设计 ui ux")
+          .setValue(this.category.keywords.join(" "))
+          .onChange(
+            fire(async (value) => {
+              this.category.keywords = value
+                .toLowerCase()
+                .split(/\s+/)
+                .filter(Boolean);
+              await this.host.saveSettings();
+            }),
+          ),
       );
 
     new Setting(containerEl).setName("说明").addText((t) =>
-      t.setValue(this.category.description).onChange(async (value) => {
-        this.category.description = value;
-        await this.host.saveSettings();
-      })
+      t.setValue(this.category.description).onChange(
+        fire(async (value) => {
+          this.category.description = value;
+          await this.host.saveSettings();
+        }),
+      ),
     );
   }
 
@@ -104,7 +133,9 @@ export class CategoryEditorModal extends Modal {
     if (!this.isCustom) {
       const reset = buttons.createEl("button", { text: "恢复默认" });
       reset.addEventListener("click", async () => {
-        const original = DEFAULT_CATEGORIES.find((c) => c.id === this.category.id);
+        const original = DEFAULT_CATEGORIES.find(
+          (c) => c.id === this.category.id,
+        );
         if (!original) return;
         this.category.icon = original.icon;
         this.category.keywords = [...original.keywords];
@@ -115,14 +146,19 @@ export class CategoryEditorModal extends Modal {
       });
     }
 
-    const remove = buttons.createEl("button", { text: "删除类别", cls: "mod-warning" });
+    const remove = buttons.createEl("button", {
+      text: "删除类别",
+      cls: "mod-warning",
+    });
     remove.addEventListener("click", async () => {
       const settings = this.host.settings;
       if (settings.categories.length <= 1) {
         new Notice("Auto Icon：至少要保留一个类别。");
         return;
       }
-      settings.categories = settings.categories.filter((c) => c.id !== this.category.id);
+      settings.categories = settings.categories.filter(
+        (c) => c.id !== this.category.id,
+      );
       await this.host.saveSettings();
       this.close();
       this.onSaved();
@@ -146,7 +182,7 @@ export function editCategory(
   host: AutoIconHost,
   category: Category,
   isCustom: boolean,
-  onSaved: () => void
+  onSaved: () => void,
 ): CategoryEditorModal {
   const modal = new CategoryEditorModal(app, host, category, isCustom, onSaved);
   modal.open();

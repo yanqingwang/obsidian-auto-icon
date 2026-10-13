@@ -1,6 +1,12 @@
 import { Modal, setIcon, type App } from "obsidian";
-import { mxnName, resolveName, searchIcons, type IconSetMeta } from "./iconset";
-import { renderIconLine, type IconStyle } from "./placement";
+import {
+  collectionName,
+  searchIcons,
+  shapeFor,
+  THEME_LIST,
+  type IconSetMeta,
+} from "./iconset";
+import { isIconTheme, renderIconLine, type IconThemeName } from "./placement";
 
 /**
  * mXn icon picker.
@@ -19,18 +25,20 @@ export class IconPickerModal extends Modal {
   private query = "";
   private grid: HTMLElement | null = null;
   private result: HTMLElement | null = null;
-  private selection: HTMLDivElement | null = null;
-  private style: IconStyle;
+  private selected: string;
+  private theme: IconThemeName;
   private loaded = false;
 
   constructor(
     app: App,
     private readonly set: IconSetMeta,
-    style: IconStyle,
-    private readonly onPick: (icon: string) => void
+    theme: IconThemeName,
+    currentIcon: string,
+    private readonly onPick: (icon: string) => void,
   ) {
     super(app);
-    this.style = style;
+    this.theme = theme;
+    this.selected = currentIcon;
   }
 
   onOpen(): void {
@@ -45,30 +53,34 @@ export class IconPickerModal extends Modal {
 
     const search = contentEl.createEl("input", {
       cls: "ai-search",
-      attr: { type: "search", placeholder: `搜索 ${this.set.count} 个 ${this.set.prefix} 图标，例如 folder` },
+      attr: {
+        type: "search",
+        placeholder: `搜索 ${this.set.count} 个 ${this.set.prefix} 图标，例如 folder`,
+      },
     });
     search.addEventListener("input", () => {
       this.query = search.value;
       this.renderGrid();
     });
     search.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && this.selection) {
-        event.preventDefault();
-        this.choose(this.selection.dataset["icon"] as string);
-      }
+      // Enter picks whatever is currently highlighted, which is the first result after a search.
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const first = this.grid?.querySelector<HTMLElement>(".ai-cell");
+      this.choose(first?.dataset["icon"] ?? this.selected);
     });
 
-    // Style is chosen here rather than buried in settings: the outline/filled decision only makes
-    // sense while you are looking at the icon.
-    const styles = contentEl.createDiv({ cls: "ai-style-row" });
-    for (const option of ["filled", "outline"] as IconStyle[]) {
-      const button = styles.createEl("button", {
-        text: option === "filled" ? "填充" : "线性",
-        cls: option === this.style ? "is-active" : "",
+    // The theme is chosen here rather than buried in settings: outline-vs-filled only makes sense
+    // while you are looking at the icon.
+    const themes = contentEl.createDiv({ cls: "ai-style-row" });
+    for (const option of THEME_LIST) {
+      const button = themes.createEl("button", {
+        text: option.label,
+        cls: option.name === this.theme ? "is-active" : "",
       });
       button.addEventListener("click", () => {
-        this.style = option;
-        for (const el of styles.children) el.classList.remove("is-active");
+        this.theme = option.name;
+        for (const el of themes.children) el.classList.remove("is-active");
         button.classList.add("is-active");
         this.renderGrid();
       });
@@ -95,10 +107,11 @@ export class IconPickerModal extends Modal {
     if (!grid || !result) return;
     grid.empty();
     result.empty();
-    this.selection = null;
 
     const matches = searchIcons(this.set, this.query, PAGE);
-    const total = this.query.trim().length > 0 ? searchIcons(this.set, this.query, 100000).length : this.set.count;
+    const total = this.query.trim()
+      ? searchIcons(this.set, this.query, 100000).length
+      : this.set.count;
 
     result.createSpan({
       text:
@@ -108,29 +121,15 @@ export class IconPickerModal extends Modal {
     });
 
     for (const name of matches) {
-      const resolved = resolveName(this.set, name, this.style);
-      if (!resolved.name) continue;
-
       const cell = grid.createDiv({
-        cls: "ai-cell",
-        attr: { title: mxnName(this.set, resolved.name) },
+        cls: "ai-cell" + (name === this.selected ? " is-selected" : ""),
+        attr: { title: collectionName(this.set, name) },
       });
       cell.dataset["icon"] = name;
 
-      const stored = this.set.icons[resolved.name];
-      if (stored) {
-        cell.innerHTML = renderIconLine(
-          { viewBox: stored.viewBox, d: stored.d },
-          resolved.name,
-          this.style,
-          24
-        );
-      } else {
-        setIcon(cell, "question");
-      }
-
-      // An outline request that fell back to the filled twin is visible, not silent.
-      if (!resolved.exact) cell.classList.add("ai-cell-fallback");
+      const shape = shapeFor(this.set, name, this.theme);
+      if (shape) cell.innerHTML = renderIconLine(shape, name, this.theme, 24);
+      else setIcon(cell, "question");
 
       cell.addEventListener("click", () => this.choose(name));
     }

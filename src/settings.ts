@@ -3,7 +3,8 @@ import type { AiConfig } from "./ai";
 import { DEFAULT_AI_CONFIG } from "./ai";
 import type { Category } from "./categories";
 import type { SignalWeights } from "./classifier";
-import type { IconStyle } from "./placement";
+import type { IconThemeName } from "./placement";
+import { DEFAULT_ACCENT } from "./iconset";
 
 /**
  * Plugin settings.
@@ -16,10 +17,21 @@ import type { IconStyle } from "./placement";
 
 export interface AutoIconSettings {
   categories: Category[];
-  /** Filled or outline. In mXn these are paired names, so both ship together. */
-  iconStyle: IconStyle;
+  /** Which IconPark theme to paint with. Themes are colour mappings, so all four ship together. */
+  iconTheme: IconThemeName;
+  /** Secondary colour used by the two-tone and multi-colour themes. */
+  accentColor: string;
   /** Note path -> icon assignment. The plugin's whole persisted state; notes are never modified. */
-  icons: Record<string, { categoryId: string; icon: string; style: string; size: number }>;
+  icons: Record<
+    string,
+    {
+      categoryId: string;
+      icon: string;
+      theme: string;
+      size: number;
+      manual?: boolean;
+    }
+  >;
   /** Rendered icon height in pixels. */
   iconSize: number;
   /** Overwrite an icon that is already at the top of a note. */
@@ -39,7 +51,8 @@ export interface AutoIconSettings {
 
 export const DEFAULT_SETTINGS: AutoIconSettings = {
   categories: [],
-  iconStyle: "filled",
+  iconTheme: "outline",
+  accentColor: DEFAULT_ACCENT,
   iconSize: 16,
   icons: {},
   overwriteExisting: false,
@@ -62,7 +75,7 @@ export const DEFAULT_SETTINGS: AutoIconSettings = {
 
 /** The one sentence the user is shown to turn auto-icon on. */
 export const ACTIVATION_HINT =
-  "Auto Icon 已就绪 —— 点下面的「开始」，或在文件树里右键任意笔记选「配图标」。图标显示在文件树里，笔记文件不会被修改。";
+  "Auto Icon 已就绪 —— 点下面的「开始」，或在文件树里右键任意笔记选「自动识别图标」。图标显示在文件树里，笔记文件不会被修改。";
 
 /** Settings as stored, filling in anything an older or newer `data.json` is missing. */
 export function withDefaults(raw: unknown): AutoIconSettings {

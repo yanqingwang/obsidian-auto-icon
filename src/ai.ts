@@ -45,7 +45,11 @@ interface AiAnswer {
 }
 
 /** Fetch signature, injected so tests do not need a network. */
-export type Fetcher = (url: string, init: RequestInit, timeoutMs: number) => Promise<unknown>;
+export type Fetcher = (
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+) => Promise<unknown>;
 
 export const defaultFetcher: Fetcher = async (url, init, timeoutMs) => {
   const controller = new AbortController();
@@ -69,17 +73,26 @@ export class AiClassifier implements NoteClassifier {
     private readonly config: AiConfig,
     private readonly fallback: NoteClassifier,
     private readonly fetcher: Fetcher = defaultFetcher,
-    private readonly onWarning: (message: string) => void = () => {}
+    private readonly onWarning: (message: string) => void = () => {},
   ) {}
 
-  async classify(signals: NoteSignals, categories: readonly Category[]): Promise<Classification> {
+  async classify(
+    signals: NoteSignals,
+    categories: readonly Category[],
+  ): Promise<Classification> {
     const safe = await this.fallback.classify(signals, categories);
-    if (!this.config.enabled || !this.config.apiKey.trim() || !this.config.model.trim()) {
+    if (
+      !this.config.enabled ||
+      !this.config.apiKey.trim() ||
+      !this.config.model.trim()
+    ) {
       return safe;
     }
 
     try {
-      const raw = await this.request(signalPayload(signals, categories, this.config));
+      const raw = await this.request(
+        signalPayload(signals, categories, this.config),
+      );
       const answer = parseAnswer(raw);
       if (!answer) throw new Error("模型没有返回可解析的 JSON");
 
@@ -91,7 +104,9 @@ export class AiClassifier implements NoteClassifier {
         // Scaled so an AI answer outranks a keyword hit but still shows a real confidence.
         score: 40 + Math.max(0, Math.min(1, answer.confidence)) * 40,
         runnerUp: safe.score,
-        reasons: [`AI: ${match.name} (${Math.round(answer.confidence * 100)}%)`],
+        reasons: [
+          `AI: ${match.name} (${Math.round(answer.confidence * 100)}%)`,
+        ],
       };
     } catch (error) {
       this.onWarning(`AI 分类失败，已回退到本地规则：${describe(error)}`);
@@ -111,12 +126,16 @@ export class AiClassifier implements NoteClassifier {
         },
         body: JSON.stringify(payload),
       },
-      this.config.timeoutMs
+      this.config.timeoutMs,
     );
   }
 }
 
-function signalPayload(signals: NoteSignals, categories: readonly Category[], config: AiConfig): unknown {
+function signalPayload(
+  signals: NoteSignals,
+  categories: readonly Category[],
+  config: AiConfig,
+): unknown {
   const catalogue = categories
     .map((c) => `- ${c.id}：${c.name}（${c.description}）`)
     .join("\n");
@@ -138,7 +157,7 @@ function signalPayload(signals: NoteSignals, categories: readonly Category[], co
         role: "system",
         content:
           "你是笔记分类助手。根据笔记内容，从给定类别中选出唯一最贴切的一个。" +
-          "只输出 JSON，格式为 {\"categoryId\": \"<类别 id>\", \"confidence\": 0~1}。" +
+          '只输出 JSON，格式为 {"categoryId": "<类别 id>", "confidence": 0~1}。' +
           "若确实没有任何类别贴切，categoryId 设为空字符串。\n\n类别列表：\n" +
           catalogue,
       },
@@ -161,8 +180,14 @@ export function parseAnswer(raw: unknown): AiAnswer | null {
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const record = parsed as Record<string, unknown>;
-  const id = typeof record["categoryId"] === "string" ? (record["categoryId"] as string).trim() : "";
-  const confidence = typeof record["confidence"] === "number" ? (record["confidence"] as number) : 0;
+  const id =
+    typeof record["categoryId"] === "string"
+      ? (record["categoryId"] as string).trim()
+      : "";
+  const confidence =
+    typeof record["confidence"] === "number"
+      ? (record["confidence"] as number)
+      : 0;
   return { categoryId: id, confidence };
 }
 

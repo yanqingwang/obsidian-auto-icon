@@ -6,14 +6,14 @@ const input = (over: Partial<ScanInput> = {}): ScanInput => ({
   existing: null,
   classification: { categoryId: "task", score: 10, runnerUp: 0, reasons: ["标签 #task"] },
   categoryId: "task",
-  icon: "checkbox-marked-circle",
-  style: "filled",
+  icon: "checklist",
+  theme: "outline",
   size: 16,
   ...over,
 });
 
 const NONE = { overwriteExisting: false, current: {} as IconMap };
-const manual = (icon: string) => ({ categoryId: "custom", icon, style: "filled", size: 16, manual: true });
+const manual = (icon: string) => ({ categoryId: "custom", icon, theme: "outline", size: 16, manual: true });
 
 describe("assigning", () => {
   it("assigns a note with no icon yet", () => {
@@ -22,7 +22,7 @@ describe("assigning", () => {
     expect(plan.changes[0]).toMatchObject({
       action: "assign",
       before: null,
-      after: "checkbox-marked-circle",
+      after: "checklist",
       categoryId: "task",
     });
   });
@@ -34,7 +34,7 @@ describe("assigning", () => {
 
 describe("leaving notes alone", () => {
   const current: IconMap = {
-    "a.md": { categoryId: "task", icon: "checkbox-marked-circle", style: "filled", size: 16 },
+    "a.md": { categoryId: "task", icon: "checklist", theme: "outline", size: 16 },
   };
 
   it("skips a note whose icon is already exactly right", () => {
@@ -45,7 +45,7 @@ describe("leaving notes alone", () => {
 
   it("does not overwrite an existing icon by default", () => {
     const plan = buildPlan(
-      [input({ existing: { categoryId: "x", icon: "star", style: "filled", size: 16 } })],
+      [input({ existing: { categoryId: "x", icon: "star", theme: "outline", size: 16 } })],
       NONE
     );
     expect(plan.changes).toEqual([]);
@@ -54,7 +54,7 @@ describe("leaving notes alone", () => {
 
   it("overwrites when asked", () => {
     const plan = buildPlan(
-      [input({ existing: { categoryId: "x", icon: "star", style: "filled", size: 16 } })],
+      [input({ existing: { categoryId: "x", icon: "star", theme: "outline", size: 16 } })],
       { ...NONE, overwriteExisting: true }
     );
     expect(plan.changes[0]).toMatchObject({ action: "replace", before: "star" });
@@ -65,7 +65,7 @@ describe("leaving notes alone", () => {
     const plan = buildPlan(
       [
         input({
-          existing: { categoryId: "x", icon: "compass", style: "filled", size: 16 },
+          existing: { categoryId: "x", icon: "compass", theme: "outline", size: 16 },
           classification: { categoryId: null, score: 2, runnerUp: 0, reasons: [] },
           categoryId: null,
           icon: null,
@@ -90,7 +90,7 @@ describe("leaving notes alone", () => {
 describe("comparing against the stored map", () => {
   it("an identical stored assignment is not a change", () => {
     const current: IconMap = {
-      "a.md": { categoryId: "task", icon: "checkbox-marked-circle", style: "filled", size: 16 },
+      "a.md": { categoryId: "task", icon: "checklist", theme: "outline", size: 16 },
     };
     // No `existing` on the note at all: the map is the authority.
     expect(buildPlan([input()], { ...NONE, current }).changes).toEqual([]);
@@ -98,7 +98,7 @@ describe("comparing against the stored map", () => {
 
   it("a size difference is skipped by default, and applied when overwrite is on", () => {
     const current: IconMap = {
-      "a.md": { categoryId: "task", icon: "checkbox-marked-circle", style: "filled", size: 24 },
+      "a.md": { categoryId: "task", icon: "checklist", theme: "outline", size: 24 },
     };
     // Skipped: the note already has an icon, and overwrite is off.
     expect(buildPlan([input()], { ...NONE, current }).changes).toEqual([]);
@@ -108,16 +108,12 @@ describe("comparing against the stored map", () => {
     });
   });
 
-  it("an outline request on a filled icon is a restyle", () => {
-    const plan = buildPlan(
-      [input({ style: "outline" })],
-      {
-        overwriteExisting: true,
-        current: {
-          "a.md": { categoryId: "task", icon: "checkbox-marked-circle", style: "filled", size: 16 },
-        },
-      }
-    );
+  it("a theme change on the same icon is a restyle", () => {
+    // Same icon name, different theme: the appearance changed, the choice did not.
+    const sameIcon: IconMap = {
+      "a.md": { categoryId: "task", icon: "checklist", theme: "outline", size: 16 },
+    };
+    const plan = buildPlan([input({ theme: "two-tone" })], { overwriteExisting: true, current: sameIcon });
     expect(plan.changes[0].action).toBe("restyle");
   });
 });
@@ -127,7 +123,7 @@ describe("counts", () => {
     const plan = buildPlan(
       [
         input({ path: "a.md" }),
-        input({ path: "b.md", existing: { categoryId: "t", icon: "checkbox-marked-circle", style: "filled", size: 16 } }),
+        input({ path: "b.md", existing: { categoryId: "t", icon: "checklist", theme: "outline", size: 16 } }),
         input({
           path: "c.md",
           classification: { categoryId: null, score: 0, runnerUp: 0, reasons: [] },
@@ -170,24 +166,24 @@ describe("hand-picked icons are protected", () => {
     expect(plan.protectedManual).toEqual(["a.md"]);
   });
 
-  it("still allows a style change on a manual icon", () => {
+  it("still allows a theme change on a manual icon", () => {
     // Protecting the *choice of icon* must not freeze its appearance: a global restyle is not a
     // re-guess. Same icon name, different style.
-    const sameIcon: IconMap = { "a.md": manual("checkbox-marked-circle") };
-    const plan = buildPlan([input({ style: "outline" })], { overwriteExisting: true, current: sameIcon });
+    const sameIcon: IconMap = { "a.md": manual("checklist") };
+    const plan = buildPlan([input({ theme: "duotone" })], { overwriteExisting: true, current: sameIcon });
     expect(plan.changes).toHaveLength(1);
     expect(plan.protectedManual).toEqual([]);
   });
 
   it("does not protect a classifier-chosen icon", () => {
-    const machine: IconMap = { "a.md": { categoryId: "task", icon: "star", style: "filled", size: 16 } };
+    const machine: IconMap = { "a.md": { categoryId: "task", icon: "star", theme: "outline", size: 16 } };
     const plan = buildPlan([input()], { overwriteExisting: true, current: machine });
     expect(plan.changes).toHaveLength(1);
     expect(plan.protectedManual).toEqual([]);
   });
 
   it("does not report a manual icon as protected when the classifier agrees", () => {
-    const agreeing: IconMap = { "a.md": manual("checkbox-marked-circle") };
+    const agreeing: IconMap = { "a.md": manual("checklist") };
     expect(buildPlan([input()], { overwriteExisting: true, current: agreeing }).protectedManual).toEqual([]);
   });
 });

@@ -19,12 +19,24 @@ import path from "path";
  * data URI survives encoding, and that nothing can break out of the stylesheet.
  */
 
-const SET = JSON.parse(readFileSync(path.join(__dirname, "..", "icons", "mdi.json"), "utf8")) as IconSetMeta;
-const resolve = (icon: string, style: string) => shapeFor(SET, icon, style)?.shape ?? null;
+const SET = JSON.parse(readFileSync(path.join(__dirname, "..", "icons", "iconpark.json"), "utf8")) as IconSetMeta;
+/**
+ * Shape as `shapeFor` returns it: inner markup plus the stroke attributes hoisted onto the root.
+ * Declared before the escaping tests because `svgDataUri` consumes it directly.
+ */
+const SHAPE = {
+  viewBox: "0 0 48 48",
+  body: '<path d="M10,4H4C2.89,4" fill="C1" stroke="C0"/>',
+  stroke: 4,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+};
+
+const resolve = (icon: string, theme: string) => shapeFor(SET, icon, theme);
 
 const map = {
-  "notes/a.md": { categoryId: "task", icon: "folder", style: "filled", size: 16 },
-  "笔记/会议/周会.md": { categoryId: "meeting", icon: "account-group", style: "outline", size: 18 },
+  "notes/a.md": { categoryId: "task", icon: "folder-open", theme: "outline", size: 16 },
+  "笔记/会议/周会.md": { categoryId: "meeting", icon: "people", theme: "two-tone", size: 18 },
 };
 
 describe("path escaping", () => {
@@ -44,7 +56,7 @@ describe("path escaping", () => {
 describe("data URIs", () => {
   it("encodes characters that would break the URL", () => {
     // A `#` would truncate the URL at the fragment and silently drop the rest of the data.
-    const uri = svgDataUri({ viewBox: "0 0 24 24", d: 'M1,1h2"#' });
+    const uri = svgDataUri({ ...SHAPE, body: 'M1,1h2"#' });
     expect(uri).not.toContain("#");
     expect(uri).not.toContain("<");
     expect(uri).not.toContain(">");
@@ -52,10 +64,14 @@ describe("data URIs", () => {
     expect(uri).toContain("%3C");
   });
 
-  it("keeps the viewBox and path data recoverable", () => {
-    const uri = svgDataUri({ viewBox: "0 0 24 24", d: "M10,4H4C2.89,4" });
+  it("keeps the viewBox, stroke attributes and body recoverable", () => {
+    const uri = svgDataUri(SHAPE);
     const svg = decodeURIComponent(uri.replace("data:image/svg+xml,", ""));
-    expect(svg).toContain('viewBox="0 0 24 24"');
+    expect(svg).toContain('viewBox="0 0 48 48"');
+    // The stroke attributes live on the root because they inherit; dropping them would make every
+    // icon render hairline-thin or default-black.
+    expect(svg).toContain('stroke-width="4"');
+    expect(svg).toContain('stroke-linecap="round"');
     expect(svg).toContain('d="M10,4H4C2.89,4"');
   });
 });
@@ -77,7 +93,7 @@ describe("stylesheet generation", () => {
 
   it("skips a note whose icon is not in the set, and says so", () => {
     const { css, skipped } = buildCss(
-      { "gone.md": { categoryId: "x", icon: "not-a-real-icon", style: "filled", size: 16 } },
+      { "gone.md": { categoryId: "x", icon: "not-a-real-icon", theme: "outline", size: 16 } },
       { shapeFor: resolve }
     );
     expect(css).toBe("");
@@ -90,7 +106,7 @@ describe("stylesheet generation", () => {
 
   it("cannot be escaped out of: a quote in a path is escaped", () => {
     const { css } = buildCss(
-      { 'evil".md': { categoryId: "x", icon: "folder", style: "filled", size: 16 } },
+      { 'evil".md': { categoryId: "x", icon: "folder", theme: "outline", size: 16 } },
       { shapeFor: resolve }
     );
     expect(css).toContain('data-path="evil\\".md"');

@@ -5,7 +5,7 @@ import { hasIcon, type IconSetMeta } from "../src/iconset";
 import { withDefaults } from "../src/settings";
 
 const SET = JSON.parse(
-  readFileSync(path.join(__dirname, "..", "icons", "mdi.json"), "utf8")
+  readFileSync(path.join(__dirname, "..", "icons", "iconpark.json"), "utf8")
 ) as IconSetMeta;
 
 describe("the default categories", () => {

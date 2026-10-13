@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "icons": "node scripts/build-mdi.mjs",
+    "icons": "node scripts/build-iconpark.mjs",
     "build": "npm run icons && tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "test": "jest --passWithNoTests",
@@ -22,7 +22,7 @@
   "author": "rosswang",
   "license": "MIT",
   "devDependencies": {
-    "@mdi/svg": "^7.4.47",
+    "@icon-park/svg": "^1.4.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",

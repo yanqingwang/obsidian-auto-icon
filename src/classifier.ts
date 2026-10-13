@@ -68,7 +68,10 @@ export type SignalWeightsKey = keyof SignalWeights;
 
 export interface NoteClassifier {
   readonly id: string;
-  classify(signals: NoteSignals, categories: readonly Category[]): Promise<Classification>;
+  classify(
+    signals: NoteSignals,
+    categories: readonly Category[],
+  ): Promise<Classification>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -90,7 +93,7 @@ interface Candidate {
 export function classifyByRules(
   signals: NoteSignals,
   categories: readonly Category[],
-  opts: ClassifyOptions
+  opts: ClassifyOptions,
 ): Classification {
   const w = { ...DEFAULT_WEIGHTS, ...opts.weights };
   const scores = new Map<string, Candidate>();
@@ -126,18 +129,28 @@ export function classifyByRules(
     const nameKey = category.name.toLowerCase();
 
     for (const tag of signals.tags) {
-      if (tag === idKey || tag === nameKey) bump(category.id, w.tagExact, `标签 #${tag}`);
-      else for (const kw of category.keywords) if (tag.includes(kw)) bump(category.id, w.tagKeyword, `标签 #${tag} ~ ${kw}`);
+      if (tag === idKey || tag === nameKey)
+        bump(category.id, w.tagExact, `标签 #${tag}`);
+      else
+        for (const kw of category.keywords)
+          if (tag.includes(kw))
+            bump(category.id, w.tagKeyword, `标签 #${tag} ~ ${kw}`);
     }
 
     // Folder and filename are matched against keywords as well as the category's own id and name —
     // a note named `2026-budget.md` has to be able to reach the `finance` category, whose keyword is
     // "budget". One hit per field, so a folder called `contract/archive` still counts once.
     const folderMatch = firstMatch(folderText, category, idKey, nameKey);
-    if (folderMatch) bump(category.id, w.folder, `文件夹 ${folderText} ~ ${folderMatch}`);
+    if (folderMatch)
+      bump(category.id, w.folder, `文件夹 ${folderText} ~ ${folderMatch}`);
 
     const baseMatch = firstMatch(base, category, idKey, nameKey);
-    if (baseMatch) bump(category.id, w.basename, `文件名 ${signals.basename} ~ ${baseMatch}`);
+    if (baseMatch)
+      bump(
+        category.id,
+        w.basename,
+        `文件名 ${signals.basename} ~ ${baseMatch}`,
+      );
 
     // At most one hit per category per text field. Without this, a long note mentioning
     // "bug issue error defect 故障 异常" would out-score an explicit `#task` tag purely by length.
@@ -156,12 +169,19 @@ export function classifyByRules(
     }
   }
 
-  const ranked = [...scores.entries()].sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]));
+  const ranked = [...scores.entries()].sort(
+    (a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]),
+  );
   const best = ranked[0];
   const second = ranked[1];
 
   if (!best || best[1].score < opts.minScore) {
-    return { categoryId: null, score: best?.[1].score ?? 0, runnerUp: 0, reasons: [] };
+    return {
+      categoryId: null,
+      score: best?.[1].score ?? 0,
+      runnerUp: 0,
+      reasons: [],
+    };
   }
 
   return {
@@ -177,7 +197,7 @@ function firstMatch(
   text: string,
   category: Category,
   idKey: string,
-  nameKey: string
+  nameKey: string,
 ): string | null {
   if (text.length === 0) return null;
   if (text.includes(idKey)) return idKey;
@@ -188,9 +208,14 @@ function firstMatch(
   return null;
 }
 
-function findByIdOrName(categories: readonly Category[], needle: string): Category | undefined {
+function findByIdOrName(
+  categories: readonly Category[],
+  needle: string,
+): Category | undefined {
   const key = needle.trim().toLowerCase();
-  return categories.find((c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key);
+  return categories.find(
+    (c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key,
+  );
 }
 
 function folderOf(path: string): string {
@@ -207,7 +232,10 @@ export class RuleClassifier implements NoteClassifier {
 
   constructor(private readonly options: ClassifyOptions) {}
 
-  classify(signals: NoteSignals, categories: readonly Category[]): Promise<Classification> {
+  classify(
+    signals: NoteSignals,
+    categories: readonly Category[],
+  ): Promise<Classification> {
     return Promise.resolve(classifyByRules(signals, categories, this.options));
   }
 }
@@ -217,7 +245,12 @@ export class RuleClassifier implements NoteClassifier {
  * ------------------------------------------------------------------ */
 
 /** Frontmatter keys that override classification outright. */
-export const DECLARED_KEYS = ["auto-icon-category", "type", "category", "kind"] as const;
+export const DECLARED_KEYS = [
+  "auto-icon-category",
+  "type",
+  "category",
+  "kind",
+] as const;
 
 export interface RawNote {
   readonly path: string;
@@ -228,7 +261,10 @@ export interface RawNote {
 const HEADING_RE = /^(#{1,3})\s+(.+?)\s*$/gm;
 
 /** Build classifier signals from a note's path, frontmatter and body. */
-export function extractSignals(note: RawNote, excerptChars = 1500): NoteSignals {
+export function extractSignals(
+  note: RawNote,
+  excerptChars = 1500,
+): NoteSignals {
   const fm = note.frontmatter ?? {};
   return {
     path: note.path,
@@ -247,7 +283,11 @@ export function basenameOf(path: string): string {
 
 function readTags(fm: Record<string, unknown>): string[] {
   const raw = fm["tags"] ?? fm["tag"];
-  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,\s]+/) : [];
+  const list = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? raw.split(/[,\s]+/)
+      : [];
   return list
     .map((t) => String(t).trim().replace(/^#/, "").toLowerCase())
     .filter((t) => t.length > 0);
@@ -266,7 +306,8 @@ function readHeadings(body: string): string[] {
 function readDeclared(fm: Record<string, unknown>): string | null {
   for (const key of DECLARED_KEYS) {
     const value = fm[key];
-    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    if (typeof value === "string" && value.trim().length > 0)
+      return value.trim();
   }
   return null;
 }

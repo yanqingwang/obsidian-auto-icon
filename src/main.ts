@@ -1,18 +1,23 @@
 import { Notice, Plugin, TFile, normalizePath } from "obsidian";
 import { AiClassifier } from "./ai";
 import { cloneCategories } from "./categories";
-import { extractSignals, RuleClassifier, type NoteClassifier } from "./classifier";
+import {
+  extractSignals,
+  RuleClassifier,
+  type NoteClassifier,
+} from "./classifier";
 // Aliased: the plugin exposes a `loadIconSet()` method too, and an unaliased import of the same
 // name resolves back to the method — which is infinite recursion, not a subtle bug.
 import {
   loadIconSet as readIconSetFromDisk,
-  mxnName,
+  ICON_SET_PATH,
+  collectionName,
   setIconSetLoader,
   shapeFor,
   type IconSetMeta,
 } from "./iconset";
 import { IconPickerModal } from "./IconPickerModal";
-import { detectIcon, stripIcon, type IconStyle } from "./placement";
+import { detectIcon, stripIcon, type IconThemeName } from "./placement";
 import { buildPlan, type ScanPlan } from "./planner";
 import { PreviewModal } from "./previewModal";
 import { IconSettingsTab } from "./SettingsTab";
@@ -22,8 +27,14 @@ import {
   type AutoIconSettings,
   type AutoIconHost,
 } from "./settings";
-import { isManual, type IconMap } from "./store";
-import { applyStylesheet, buildCss, removeStylesheet, wrapCss } from "./treeIcons";
+import { isManual, normaliseAssignments, type IconMap } from "./store";
+import {
+  applyStylesheet,
+  buildCss,
+  removeStylesheet,
+  wrapCss,
+} from "./treeIcons";
+import { fire } from "./callbacks";
 
 /**
  * Auto Icon — give each note an icon in the file explorer, chosen from its content.
@@ -50,13 +61,20 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
       this.settings.categories = cloneCategories();
       await this.saveSettings();
     }
-    this.icons = (this.settings.icons ?? {}) as IconMap;
+    this.icons = normaliseAssignments(this.settings.icons);
 
     // The loader must read the file itself, not call `loadIconSet()`: that method defers to
     // `loadIconSet()` from the icon-set module, which invokes this loader — so pointing the loader
     // back at the method is a cycle, not a convenience.
     setIconSetLoader(async () => {
-      const file = normalizePath(`${this.manifest.dir ?? ".obsidian/plugins/auto-icon"}/icons/mdi.json`);
+      // `manifest.dir` is the plugin folder relative to the vault, which is what we want. When it
+      // is absent the fallback asks `Vault#configDir` where the config folder actually is -- a
+      // hard-coded `.obsidian` breaks for anyone who moved it, and the icon set silently fails to
+      // load with no useful error.
+      const dir =
+        this.manifest.dir ??
+        `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+      const file = normalizePath(`${dir}/${ICON_SET_PATH}`);
       const text = await this.app.vault.adapter.read(file);
       const set = JSON.parse(text) as IconSetMeta;
       this.set = set;
@@ -86,7 +104,8 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     this.addCommand({
       id: "reassign-all",
       name: "重新分配（覆盖已有图标）",
-      callback: () => void this.scanScope(this.settings.scopeFolder, { force: true }),
+      callback: () =>
+        void this.scanScope(this.settings.scopeFolder, { force: true }),
     });
     this.addCommand({
       id: "pick-icon",
@@ -112,7 +131,9 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     // Assignments can only be drawn once the icon set is readable, and the file explorer may not
     // exist yet on first load, so redraw on layout changes as well.
     void this.refreshIcons();
-    this.registerEvent(this.app.workspace.on("layout-change", () => void this.refreshIcons()));
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => void this.refreshIcons()),
+    );
 
     this.registerFileMenu();
 
@@ -136,7 +157,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
           item
             .setTitle(assigned ? "重新自动识别" : "自动识别图标")
             .setIcon("wand-sparkles")
-            .onClick(() => void this.assignOne(file))
+            .onClick(() => void this.assignOne(file)),
         );
 
         // The way out of a wrong guess. Re-running the classifier just repeats the mistake, so
@@ -145,28 +166,40 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
           item
             .setTitle("手动选择图标…")
             .setIcon("image-search")
-            .onClick(() => void this.pickIconFor(file))
+            .onClick(() => void this.pickIconFor(file)),
         );
 
         if (assigned) {
           if (!isManual(assigned)) {
             menu.addItem((item) =>
-              item.setTitle("标记为手动选择").setIcon("pin").onClick(async () => {
-                this.icons[file.path] = { ...assigned, manual: true };
-                await this.saveSettings();
-                new Notice(`已把 ${file.path} 的图标标记为手动选择，之后批量扫描不会覆盖它。`);
-              })
+              item
+                .setTitle("标记为手动选择")
+                .setIcon("pin")
+                .onClick(
+                  fire(async () => {
+                    this.icons[file.path] = { ...assigned, manual: true };
+                    await this.saveSettings();
+                    new Notice(
+                      `已把 ${file.path} 的图标标记为手动选择，之后批量扫描不会覆盖它。`,
+                    );
+                  }),
+                ),
             );
           }
           menu.addItem((item) =>
-            item.setTitle("移除图标").setIcon("trash-2").onClick(async () => {
-              delete this.icons[file.path];
-              await this.saveSettings();
-              await this.refreshIcons();
-            })
+            item
+              .setTitle("移除图标")
+              .setIcon("trash-2")
+              .onClick(
+                fire(async () => {
+                  delete this.icons[file.path];
+                  await this.saveSettings();
+                  await this.refreshIcons();
+                }),
+              ),
           );
         }
-      })
+      }),
     );
   }
 
@@ -230,11 +263,13 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     try {
       const set = await this.requireSet();
       const { css, skipped } = buildCss(this.icons, {
-        shapeFor: (icon, style) => shapeFor(set, icon, style as IconStyle)?.shape ?? null,
+        shapeFor: (icon, theme) => shapeFor(set, icon, theme as IconThemeName),
       });
       applyStylesheet(document, wrapCss(css));
       if (skipped.length > 0) {
-        console.warn(`[auto-icon] ${skipped.length} note(s) have an icon missing from the set`);
+        console.warn(
+          `[auto-icon] ${skipped.length} note(s) have an icon missing from the set`,
+        );
       }
     } catch (error) {
       console.warn("[auto-icon] could not draw file-explorer icons", error);
@@ -273,7 +308,10 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     await this.scanScope(this.settings.scopeFolder);
   }
 
-  async scanScope(scopeFolder: string, options: { force?: boolean } = {}): Promise<void> {
+  async scanScope(
+    scopeFolder: string,
+    options: { force?: boolean } = {},
+  ): Promise<void> {
     const files = this.resolveScope(scopeFolder);
     if (files.length === 0) {
       new Notice("Auto Icon：范围内没有 Markdown 文件。");
@@ -288,7 +326,8 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
   private resolveScope(scopeFolder: string): TFile[] {
     const folder = scopeFolder.trim().replace(/^\/+|\/+$/g, "");
-    const hidden = (p: string): boolean => p.split("/").some((s) => s.startsWith("."));
+    const hidden = (p: string): boolean =>
+      p.split("/").some((s) => s.startsWith("."));
 
     if (folder.length === 0) {
       return this.app.vault.getMarkdownFiles().filter((f) => !hidden(f.path));
@@ -296,15 +335,21 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
     const target = this.app.vault.getAbstractFileByPath(folder);
     if (target instanceof TFile) return [target];
-    const children = (target as unknown as { children?: unknown[] } | null)?.children;
+    const children = (target as unknown as { children?: unknown[] } | null)
+      ?.children;
     if (!children) {
-      new Notice(`Auto Icon：找不到文件夹 "${folder}"。清空这一栏即可扫描整个 vault。`, 8000);
+      new Notice(
+        `Auto Icon：找不到文件夹 "${folder}"。清空这一栏即可扫描整个 vault。`,
+        8000,
+      );
       return [];
     }
 
     const out: TFile[] = [];
     const walk = (node: { children: unknown[] }): void => {
-      for (const child of node.children as Array<TFile | { children: unknown[]; path: string }>) {
+      for (const child of node.children as Array<
+        TFile | { children: unknown[]; path: string }
+      >) {
         if (child instanceof TFile) {
           if (child.extension === "md" && !hidden(child.path)) out.push(child);
         } else if (child.path && !hidden(child.path)) {
@@ -319,7 +364,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
   private async runScan(
     files: TFile[],
     description: string,
-    options: { force?: boolean } = {}
+    options: { force?: boolean } = {},
   ): Promise<void> {
     const warnings: string[] = [];
     const seen = new Set<string>();
@@ -332,7 +377,8 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
     const classifier = this.buildClassifier(warn);
     const set = await this.requireSet();
-    const style = this.settings.iconStyle as import("./placement").IconStyle;
+    const theme = this.settings
+      .iconTheme as import("./placement").IconThemeName;
     const size = this.settings.iconSize;
 
     const inputs = [];
@@ -344,8 +390,13 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
       const { body, frontmatter } = readNote(raw);
 
       const signals = extractSignals({ path: file.path, frontmatter, body });
-      const classification = await classifier.classify(signals, this.settings.categories);
-      const category = this.settings.categories.find((c) => c.id === classification.categoryId);
+      const classification = await classifier.classify(
+        signals,
+        this.settings.categories,
+      );
+      const category = this.settings.categories.find(
+        (c) => c.id === classification.categoryId,
+      );
       if (category) matched += 1;
 
       inputs.push({
@@ -356,19 +407,22 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
         classification,
         categoryId: category?.id ?? null,
         icon: category?.icon ?? null,
-        style,
+        theme,
         size,
       });
     }
 
     const plan: ScanPlan = buildPlan(inputs, {
       current: this.icons,
-      overwriteExisting: options.force === true || this.settings.overwriteExisting,
+      overwriteExisting:
+        options.force === true || this.settings.overwriteExisting,
     });
 
     if (warnings.length > 0) new Notice(warnings.join("\n"), 10000);
     if (plan.changes.length === 0) {
-      new Notice(`Auto Icon：没有需要分配的图标（处理了 ${files.length} 个笔记）。`);
+      new Notice(
+        `Auto Icon：没有需要分配的图标（处理了 ${files.length} 个笔记）。`,
+      );
       return;
     }
 
@@ -383,9 +437,9 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
           considered: files.length,
           aiEnabled: this.settings.ai.enabled,
           iconSet: set,
-          iconStyle: this.settings.iconStyle,
+          iconTheme: this.settings.iconTheme,
         },
-        proceed
+        proceed,
       ).open();
     } else {
       proceed();
@@ -397,13 +451,16 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
       this.icons[change.path] = {
         categoryId: change.categoryId,
         icon: change.after,
-        style: change.style,
+        theme: change.theme,
         size: change.size,
       };
     }
     await this.saveSettings();
     await this.refreshIcons();
-    new Notice(`Auto Icon：已给 ${plan.changes.length} 个笔记配好图标，文件没有被修改。`, 8000);
+    new Notice(
+      `Auto Icon：已给 ${plan.changes.length} 个笔记配好图标，文件没有被修改。`,
+      8000,
+    );
   }
 
   /* ---------------------------------------------------------------- *
@@ -428,7 +485,13 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
   async pickIconFor(file: TFile): Promise<void> {
     const set = await this.requireSet();
     const chosen = await new Promise<string | null>((resolve) => {
-      const modal = new IconPickerModal(this.app, set, this.settings.iconStyle, (value) => resolve(value));
+      const modal = new IconPickerModal(
+        this.app,
+        set,
+        this.settings.iconTheme,
+        this.icons[file.path]?.icon ?? "",
+        (value) => resolve(value),
+      );
       modal.open();
     });
     if (!chosen) return;
@@ -436,12 +499,14 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     this.icons[file.path] = {
       categoryId: "custom",
       icon: chosen,
-      style: this.settings.iconStyle,
+      theme: this.settings.iconTheme,
       size: this.settings.iconSize,
     };
     await this.saveSettings();
     await this.refreshIcons();
-    new Notice(`Auto Icon：已为 ${file.path} 设置 ${mxnName(set, chosen)}。`);
+    new Notice(
+      `Auto Icon：已为 ${file.path} 设置 ${collectionName(set, chosen)}。`,
+    );
   }
 
   async pickIconForCategory(categoryId: string): Promise<void> {
@@ -450,7 +515,13 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
     const set = await this.requireSet();
 
     const chosen = await new Promise<string | null>((resolve) => {
-      new IconPickerModal(this.app, set, this.settings.iconStyle, (value) => resolve(value)).open();
+      new IconPickerModal(
+        this.app,
+        set,
+        this.settings.iconTheme,
+        category.icon,
+        (value) => resolve(value),
+      ).open();
     });
     if (!chosen || chosen === category.icon) return;
 
@@ -518,7 +589,7 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
 
     new Notice(
       `Auto Icon：已清理 ${cleaned} 个笔记里的旧图标行${failures.length ? `，${failures.length} 个失败` : ""}。`,
-      failures.length ? 10000 : 8000
+      failures.length ? 10000 : 8000,
     );
   }
 
@@ -526,8 +597,13 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
    * Local rules by default; the AI classifier wraps them so any failure degrades back rather than
    * leaving a note unclassified.
    */
-  private buildClassifier(onWarning: (message: string) => void): NoteClassifier {
-    const rules = new RuleClassifier({ minScore: this.settings.minScore, weights: this.settings.weights });
+  private buildClassifier(
+    onWarning: (message: string) => void,
+  ): NoteClassifier {
+    const rules = new RuleClassifier({
+      minScore: this.settings.minScore,
+      weights: this.settings.weights,
+    });
     if (!this.settings.ai.enabled) return rules;
     return new AiClassifier(this.settings.ai, rules, undefined, onWarning);
   }
@@ -555,7 +631,9 @@ export function readNote(raw: string): {
     const item = /^\s*-\s+(.*)$/.exec(line);
     if (item && key) {
       const existing = frontmatter[key];
-      frontmatter[key] = Array.isArray(existing) ? [...(existing as string[]), item[1].trim()] : [item[1].trim()];
+      frontmatter[key] = Array.isArray(existing)
+        ? [...(existing as string[]), item[1].trim()]
+        : [item[1].trim()];
       continue;
     }
     const kv = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
@@ -571,7 +649,7 @@ export function readNote(raw: string): {
 function fromWrittenLine(detected: ReturnType<typeof detectIcon>): {
   categoryId: string;
   icon: string;
-  style: string;
+  theme: string;
   size: number;
 } | null {
   return detected ? { categoryId: "legacy", ...detected } : null;

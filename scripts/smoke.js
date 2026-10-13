@@ -7,7 +7,7 @@
  *
  * The stub `document` is a few lines rather than jsdom, because jsdom is ESM-only and this runs as
  * CommonJS. It exercises the real path end to end: load the bundle, register commands, read
- * `icons/mdi.json`, assign an icon, and generate the stylesheet that draws it.
+ * `icons/iconpark.json`, assign an icon, and generate the stylesheet that draws it.
  *
  * Run with: npm run smoke
  */
@@ -138,18 +138,19 @@ const EXPECTED_COMMANDS = [
   // The icon set must load from disk and every default category must resolve through it.
   const set = await plugin.loadIconSet();
   if (set.license !== "Apache-2.0") problems.push(`unexpected icon licence: ${set.license}`);
-  if (set.prefix !== "mdi") problems.push(`expected mXn mdi prefix, got ${set.prefix}`);
+  if (set.prefix !== "icon-park") problems.push(`expected icon-park prefix, got ${set.prefix}`);
+  if (set.author !== "ByteDance") problems.push(`expected ByteDance IconPark, got ${set.author}`);
   const unresolved = plugin.settings.categories.filter((c) => !set.icons[c.icon]);
   if (unresolved.length) {
     problems.push(`categories missing from the shipped set: ${unresolved.map((c) => c.id).join(", ")}`);
   }
 
   // A real assignment must produce a real stylesheet rule.
-  plugin.icons["notes/会议/周会.md"] = { categoryId: "meeting", icon: "account-group", style: "outline", size: 16 };
+  plugin.icons["notes/会议/周会.md"] = { categoryId: "meeting", icon: "people", theme: "two-tone", size: 16 };
   await plugin.refreshIcons();
   const css = document.getElementById("auto-icon-tree")?.textContent ?? "";
   if (!css.includes('data-path="notes/会议/周会.md"')) problems.push("stylesheet missing the note rule");
-  if (!css.includes("mdi") && !css.includes("data:image/svg+xml")) problems.push("stylesheet has no icon data");
+  if (!css.includes("data:image/svg+xml")) problems.push("stylesheet has no icon data");
 
   // Clean teardown must remove the stylesheet from the user's Obsidian.
   plugin.onunload();
@@ -163,7 +164,7 @@ const EXPECTED_COMMANDS = [
       {
         commands: ids.length,
         categories: plugin.settings.categories.length,
-        iconSet: `${set.source} ${set.prefix}: ${set.package} (${set.license}) · ${set.count} icons`,
+        iconSet: `${set.source} by ${set.author} · ${set.package} (${set.license}) · ${set.count} icons · ${set.themes.join("/")}`,
         stylesheetRule: css.length > 0,
         problems,
       },

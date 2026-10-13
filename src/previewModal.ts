@@ -1,6 +1,7 @@
 import { App, Modal } from "obsidian";
 import { shapeFor } from "./iconset";
-import { styleLabel, type IconStyle } from "./placement";
+import { renderIconLine } from "./placement";
+import { themeLabel, type IconThemeName } from "./placement";
 import type { ScanPlan } from "./planner";
 
 /**
@@ -21,7 +22,7 @@ export interface PreviewRequest {
   readonly considered: number;
   readonly aiEnabled: boolean;
   readonly iconSet: import("./iconset").IconSetMeta | null;
-  readonly iconStyle: IconStyle;
+  readonly iconTheme: IconThemeName;
 }
 
 const MAX_RENDERED = 300;
@@ -46,7 +47,7 @@ export class PreviewModal extends Modal {
 
     contentEl.createEl("p", {
       cls: "ai-summary",
-      text: `将给 ${plan.changes.length} 个笔记分配图标（新增 ${assign} · 更新 ${rest}） · 样式：${styleLabel(this.request.iconStyle)} · 范围：${this.request.scopeDescription}`,
+      text: `将给 ${plan.changes.length} 个笔记分配图标（新增 ${assign} · 更新 ${rest}） · 样式：${themeLabel(this.request.iconTheme)} · 范围：${this.request.scopeDescription}`,
     });
     contentEl.createEl("p", {
       cls: "ai-muted",
@@ -71,7 +72,10 @@ export class PreviewModal extends Modal {
     const shown = plan.changes.slice(0, MAX_RENDERED);
     for (const change of shown) this.renderRow(list, change);
     if (plan.changes.length > shown.length) {
-      list.createEl("p", { cls: "ai-muted", text: `… 另有 ${plan.changes.length - shown.length} 个笔记未列出。` });
+      list.createEl("p", {
+        cls: "ai-muted",
+        text: `… 另有 ${plan.changes.length - shown.length} 个笔记未列出。`,
+      });
     }
 
     const buttons = contentEl.createDiv({ cls: "ai-buttons" });
@@ -79,7 +83,10 @@ export class PreviewModal extends Modal {
     cancel.addEventListener("click", () => this.close());
 
     const apply = buttons.createEl("button", {
-      text: plan.changes.length === 0 ? "关闭" : `分配 ${plan.changes.length} 个图标`,
+      text:
+        plan.changes.length === 0
+          ? "关闭"
+          : `分配 ${plan.changes.length} 个图标`,
       cls: "mod-cta",
     });
     apply.addEventListener("click", () => {
@@ -89,14 +96,21 @@ export class PreviewModal extends Modal {
     apply.focus();
   }
 
-  private renderRow(parent: HTMLElement, change: ScanPlan["changes"][number]): void {
+  private renderRow(
+    parent: HTMLElement,
+    change: ScanPlan["changes"][number],
+  ): void {
     const row = parent.createDiv({ cls: "ai-row" });
 
     const set = this.request.iconSet;
-    const resolved = set ? shapeFor(set, change.after, change.style) : null;
+    const resolved = set ? shapeFor(set, change.after, change.theme) : null;
     if (resolved) {
-      row.createSpan({ cls: "ai-row-icon" }).innerHTML =
-        `<svg viewBox="${resolved.shape.viewBox}" width="18" height="18" fill="currentColor"><path d="${resolved.shape.d}"/></svg>`;
+      row.createSpan({ cls: "ai-row-icon" }).innerHTML = renderIconLine(
+        resolved,
+        change.after,
+        change.theme,
+        18,
+      );
     }
 
     const head = row.createDiv({ cls: "ai-row-head" });

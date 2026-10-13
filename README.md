@@ -2,7 +2,7 @@
 
 根据笔记内容，自动在**左侧文件树**给每篇笔记配一个图标。32 个内置类别，本地规则引擎默认离线可用，AI 分类可选。
 
-图标集是本地打包的 [Material Design Icons](https://github.com/Templarian/MaterialDesign)（Apache-2.0），7447 个图标，mXn 命名（`mdi:folder`、`mdi:folder-outline`），全部离线可用。
+图标集是本地打包的 [**ByteDance IconPark**](https://github.com/bytedance/iconpark)（Apache-2.0），**2658 个图标**，按 `集合:名称` 命名（`icon-park:folder-open`），全部离线可用。
 
 **笔记文件本身不会被修改。** 所有分配存在插件自己的 `data.json` 里，靠生成的样式表画出来。删掉插件，vault 一字不差。
 
@@ -37,11 +37,17 @@
 
 ## 图标：mXn 格式
 
-**为什么是 mdi / mXn。** `mdi:folder-outline` 是一个你能直接查到、复制、或者从别的工具配置里读出来的名字。上一版 IconPark 用的是它自己的词表，每个图标都得靠翻才能找到——换了 mXn 之后，插件和生态里其它工具说同一种语言。
+**为什么是 IconPark。** 字节跳动的开源图标库，Apache-2.0，`bytedance/iconpark`。2658 个图标按 `icon-park:名称` 寻址，和 Iconify 生态的命名约定一致，别处看到能认出来。
 
-**样式是命名约定。** mdi 的填充和线性是成对的两个名字（`folder` 和 `folder-outline`），不是同一份图形的两种字重。所以「样式」就是「用不用 `-outline` 后缀」，两版都在发布包里，不需要下载任何东西。7447 个里 1889 个有线性孪生版本，缺的那个会自动回退到填充版本并在选择器上标出来，而不是假装有。
+**四种样式是同一套图形的四种上色。** IconPark 每个图标只有一份路径数据，「线性 / 填充 / 双色 / 双色深浅」是四个**配色方案**，不是四份图形。所以：
 
-图标集是独立文件（2.80 MB），不是 `main.js` 的一部分——`main.js` 只有 **67 KB**，加载瞬时，图标集第一次用到时才读一次。
+- 四种样式**全部随包发布**，切换不需要下载任何东西
+- 生成时用哨兵色 `C0..C3` 渲染一遍，把哨兵保留在存下来的 markup 里，显示时再替换成真颜色——**一个存储图标服务四种样式**
+- 生成必须用 `multi-color` 主题：只有它把 `fill` 数组原样映射到四个色槽，`outline` 会把 `none` 同时放进槽 1 和槽 3，存下来有歧义
+
+颜色是插件自己的，不是 IconPark 默认的（`#333` / `#FFF` / `#2F88FF`）：图标得跟着所在主题的文字颜色走，所以槽 0 是 `currentColor`、填充槽是 `none`——硬编码深灰色在暗色主题下会直接消失，这是插件图标「莫名不显示」最常见的原因。
+
+图标集是独立文件（1.20 MB），不是 `main.js` 的一部分——`main.js` 只有约 67 KB，加载瞬时，图标集第一次用到时才读一次。
 
 ### 选择器
 
@@ -155,7 +161,7 @@ npm install
 npm run build
 ```
 
-产物：`main.js` + `manifest.json` + `styles.css` + `icons/mdi.json`。**四个文件都要。**
+产物：`main.js` + `manifest.json` + `styles.css` + `icons/iconpark.json`。**四个文件都要。**
 
 ```bash
 OUTDIR="/path/to/your/vault/.obsidian/plugins/auto-icon" npm run build
@@ -166,9 +172,9 @@ OUTDIR="/path/to/your/vault/.obsidian/plugins/auto-icon" npm run build
 ## 开发
 
 ```bash
-npm run icons       # 重新生成 icons/mdi.json
+npm run icons       # 重新生成 icons/iconpark.json
 npm run typecheck
-npm test            # 151 个测试
+npm test            # 173 个测试
 npm run smoke       # 构建并真实加载 main.js + 读图标集 + 生成样式表
 npm run dev
 ```
@@ -180,14 +186,16 @@ npm run dev
 | `src/CategoryEditorModal.ts` | 单个类别的编辑对话框（图标 / 关键词 / 删除 / 恢复默认） |
 | `src/store.ts` | 分配表（笔记路径 → 图标），插件的全部持久化状态 |
 | `src/treeIcons.ts` | 由分配表生成 CSS 并注入 |
-| `src/iconset.ts` | mXn 图标集加载（懒加载 + 并发去重）、名称解析、搜索排序 |
+| `src/iconset.ts` | IconPark 图标集加载（懒加载 + 并发去重）、主题上色、搜索排序 |
+| `src/callbacks.ts` | `fire()`：把 async 回调包成同步，并接住 rejected save |
+| `src/discovery.ts` | 从 vault 自己的 tag / 文件夹里提取候选类别（未接入） |
 | `src/placement.ts` | 早期版本写入的 SVG 行的识别与清理 |
 | `src/categories.ts` | 32 个默认类别、关键词、32 上限强制 |
 | `src/classifier.ts` | 信号提取 + 本地规则打分（纯函数） |
 | `src/ai.ts` | 可选 AI 分类器，实现同一个接口 |
 | `src/planner.ts` | 生成可预览的改动计划 |
 | `src/main.ts` | 命令、扫描流程 |
-| `scripts/build-mdi.mjs` | 生成图标集 |
+| `scripts/build-iconpark.mjs` | 生成图标集 |
 | `scripts/smoke.js` | 冒烟加载产物 |
 
 分类和计划逻辑都是不依赖 Obsidian 的纯函数，可以脱离 vault 单测——风险本来就在这里。
@@ -196,16 +204,19 @@ npm run dev
 
 ```
 tests/
-├── iconset.test.ts   # 读真实生成的 mdi.json
+├── iconset.test.ts   # 读真实生成的 iconpark.json
 ├── treeIcons.test.ts # CSS 生成、路径转义、data URI 编码
 ├── store.test.ts     # 分配表 diff / 清理
 ├── planner.test.ts   # 分配/覆盖/跳过策略
-├── categories.test.ts  # 含「编辑器弹窗能打开」的冒烟断言
+├── categories.test.ts # 含「编辑器弹窗能打开」的冒烟断言
 ├── classifier.test.ts
-└── ai.test.ts
+├── callbacks.test.ts  # fire()：失败的保存要变成 Notice，不是静默
+├── storeMigrate.test.ts # 0.2.0 的 style → 0.3.0 的 theme
+├── ai.test.ts
+└── （discovery.ts 已就位，尚未接入设置页）
 ```
 
-`iconset.test.ts` 和 `categories.test.ts` 直接读**真实生成**的 `mdi.json`。「每个默认类别都能解析」是对**发布产物**的断言，必须对着它测。
+`iconset.test.ts` 和 `categories.test.ts` 直接读**真实生成**的 `iconpark.json`。「每个默认类别都能解析」是对**发布产物**的断言，必须对着它测。
 
 `treeIcons.test.ts` 的 DOM 用十几行手写桩而不是 jsdom——jsdom 是纯 ESM，而这个测试跑在 CommonJS 下。
 
@@ -213,4 +224,4 @@ tests/
 
 ## 许可
 
-MIT（图标集来自 Material Design Icons，Apache-2.0）
+MIT（图标集来自 ByteDance IconPark，Apache-2.0）

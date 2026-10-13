@@ -1,9 +1,9 @@
 {
   "id": "auto-icon",
   "name": "Auto Icon",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "minAppVersion": "1.5.0",
-  "description": "Give each note an icon in the file explorer, chosen from its content. 32 built-in categories, local rules by default. The full Material Design Icons set ships with the plugin. Notes are never modified.",
+  "description": "Give each note an icon in the file explorer, chosen from its content. 32 built-in categories you can extend, local rules by default. The full ByteDance IconPark set ships with the plugin. Notes are never modified.",
   "author": "rosswang",
   "authorUrl": "https://github.com/yanqingwang",
   "isDesktopOnly": false
