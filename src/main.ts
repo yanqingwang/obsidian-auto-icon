@@ -10,6 +10,7 @@ import {
 // name resolves back to the method — which is infinite recursion, not a subtle bug.
 import {
   loadIconSet as readIconSetFromDisk,
+  ICON_SET_FILE,
   ICON_SET_PATH,
   collectionName,
   setIconSetLoader,
@@ -74,11 +75,34 @@ export default class AutoIconPlugin extends Plugin implements AutoIconHost {
       const dir =
         this.manifest.dir ??
         `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
-      const file = normalizePath(`${dir}/${ICON_SET_PATH}`);
-      const text = await this.app.vault.adapter.read(file);
-      const set = JSON.parse(text) as IconSetMeta;
-      this.set = set;
-      return set;
+
+      // Try both layouts. `gh release create` flattens asset paths, so a release uploaded with
+      // `icons/iconpark.json` arrives as `iconpark.json` beside `main.js` -- while a manual copy
+      // keeps the folder. Version 0.2.0 shipped the flattened form and the loader only looked for
+      // `icons/`, so the icon set never loaded for anyone who installed from it. Guessing wrong
+      // here means no icons at all and no obvious cause, so both are tried before giving up.
+      const candidates = [
+        `${dir}/${ICON_SET_PATH}`,
+        `${dir}/${ICON_SET_FILE}`,
+      ];
+
+      let lastError: unknown;
+      for (const file of candidates.map((f) => normalizePath(f))) {
+        try {
+          const text = await this.app.vault.adapter.read(file);
+          const set = JSON.parse(text) as IconSetMeta;
+          this.set = set;
+          return set;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw new Error(
+        `找不到图标集。试过：${candidates.join("、")}。` +
+          `请把 ${ICON_SET_FILE} 放进插件目录（可放在 ${ICON_SET_PATH} 或插件根目录）。` +
+          `（${lastError instanceof Error ? lastError.message : String(lastError)}）`
+      );
     });
 
     this.addSettingTab(new IconSettingsTab(this.app, this));

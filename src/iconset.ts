@@ -39,6 +39,9 @@ export interface IconSetMeta {
 
 export const ICON_SET_PATH = "icons/iconpark.json";
 
+/** The same file at the plugin root, which is where a release upload flattens it. */
+export const ICON_SET_FILE = "iconpark.json";
+
 let cached: IconSetMeta | null = null;
 let pending: Promise<IconSetMeta> | null = null;
 
